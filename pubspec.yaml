@@ -1,0 +1,62 @@
+name: asetronics_ag_app
+description: "Asetronics AG Wartungs-App"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.2.2
+  cupertino_icons: ^1.0.2
+  sqflite: ^2.3.0
+  sqflite_common_ffi_web: ^0.4.1
+  path: ^1.8.3
+  qr_flutter: ^4.1.0
+  pdf: ^3.10.7
+  printing: ^5.11.1
+  http_parser: ^4.0.2
+  js: ^0.6.7
+  archive: ^4.0.2
+  async: ^2.11.0
+  universal_html: ^2.2.4
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.0
+  image_picker: ^1.0.4
+  path_provider: ^2.1.1
+  connectivity_plus: ^6.1.2
+  flutter_secure_storage: ^9.0.0
+  provider: ^6.1.1
+  local_auth: ^2.3.0
+  syncfusion_flutter_pdfviewer: ^28.2.3
+  mysql1: ^0.20.0
+  crypto: ^3.0.3
+  http: ^1.2.2
+  intl: ^0.19.0
+  uuid: ^4.2.1
+  syncfusion_flutter_core: ^28.2.3
+  fl_chart: ^0.64.0
+  flutter_dotenv: ^5.0.2
+  qr_code_scanner:
+    path: ./my_packages/qr_code_scanner
+  file_picker: ^8.3.1
+  permission_handler: ^11.3.0
+  device_info_plus: ^11.3.0  # Aktualisierte Version
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  mockito: ^5.4.4
+  test: ^1.24.9
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+    - assets/IMG_4945.PNG
+    - assets/.env

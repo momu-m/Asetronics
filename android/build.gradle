@@ -1,0 +1,30 @@
+buildscript {
+    ext.kotlin_version = '1.9.0' // Hinzugefügt: Kotlin-Version
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0' // Hinzugefügt: Android Gradle Plugin-Version
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version" // Hinzugefügt: Kotlin-Gradle-Plugin
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = "../build" // Bestehender Code bleibt erhalten
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}" // Bestehender Code bleibt erhalten
+}
+subprojects {
+    project.evaluationDependsOn(":app") // Bestehender Code bleibt erhalten
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir // Bestehender Code bleibt erhalten
+}

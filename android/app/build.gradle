@@ -1,0 +1,42 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+android {
+    namespace "com.example.asetronics_ag_app" // Aktualisiert: namespace hinzugefügt
+    compileSdk = 35 // Auf 34 erhöht
+
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17 // Aktualisiert auf Java 17
+        targetCompatibility = JavaVersion.VERSION_17 // Aktualisiert auf Java 17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17' // Aktualisiert auf JVM 17
+    }
+
+    defaultConfig {
+        applicationId "com.example.asetronics_ag_app" // Aktualisiert: applicationId hinzugefügt
+        minSdk = 21 // Explizit auf 21 gesetzt für QR-Scanner
+        targetSdk = 35 // Auf 34 erhöht
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    buildTypes {
+        release {
+            // TODO: Add your own signing config for the release build.
+            // Signing with the debug keys for now, so `flutter run --release` works.
+            signingConfig = signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}

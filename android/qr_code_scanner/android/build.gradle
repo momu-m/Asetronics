@@ -1,0 +1,11 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace "com.example.asetronics_ag_app.qr"
+    compileSdkVersion 35
+
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion 35
+    }
+}
