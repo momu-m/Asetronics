@@ -4,6 +4,7 @@ import '../../../models/maintenance_schedule.dart';
 import '../../../models/user_role.dart';
 import '../../../config/api_config.dart';
 import '../../../main.dart' show userService;
+import '../../../utils/machine_constants.dart';
 
 class PlannerFormScreen extends StatefulWidget {
   final MaintenanceTask? existingTask;
@@ -19,6 +20,9 @@ class PlannerFormScreen extends StatefulWidget {
 
 class _PlannerFormScreenState extends State<PlannerFormScreen> {
   final _formKey = GlobalKey<FormState>();
+  String? _selectedMachineLine;
+  String? _selectedMachineType;
+
 
   // Text Controller
   final _titleController = TextEditingController();
@@ -37,6 +41,29 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
   // Listen für Dropdown-Menüs
   List<Map<String, dynamic>> _machines = [];
   List<Map<String, dynamic>> _technicians = [];
+  List<String> get _machineLines => ProductionLines.getAllLines();
+
+  List<String> get _machineTypes {
+    if (_selectedMachineLine == ProductionLines.xLine) {
+      return [
+        ...MachineCategories.placerTypes,
+        ...MachineCategories.printerTypes
+      ];
+    } else if (_selectedMachineLine == ProductionLines.dLine) {
+      return [
+        ...MachineCategories.placerTypes,
+        ...MachineCategories.ovenTypes
+      ];
+    }
+
+    // Fallback: Alle Maschinentypen
+    return [
+      ...MachineCategories.placerTypes,
+      ...MachineCategories.printerTypes,
+      ...MachineCategories.ovenTypes,
+      ...MachineCategories.inspectionTypes,
+    ];
+  }
 
   @override
   void initState() {
@@ -177,7 +204,8 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
         "id": widget.existingTask?.id ?? 'task-${DateTime.now().millisecondsSinceEpoch}',
         "title": _titleController.text.trim(),
         "description": _descriptionController.text.trim(),
-        "machine_id": _selectedMachineId,
+        'machine_line': _selectedMachineLine,
+        'machine_type': _selectedMachineType,
         "assigned_to": _selectedTechnician,
         "due_date": _nextDueDate.toIso8601String(),
         "status": widget.existingTask?.status.toString().split('.').last ?? "pending",
@@ -261,22 +289,52 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
 
               // Maschine
               DropdownButtonFormField<String>(
-                value: _selectedMachineId,
+                value: _selectedMachineLine,
                 decoration: const InputDecoration(
-                  labelText: 'Maschine',
+                  labelText: 'Produktionslinie',
                   border: OutlineInputBorder(),
                 ),
-                items: _machines.map((machine) {
+                items: _machineLines.map((line) {
                   return DropdownMenuItem(
-                    value: machine['id'].toString(),
-                    child: Text('${machine['name']} (${machine['type']})'),
+                    value: line,
+                    child: Text(line),
                   );
                 }).toList(),
-                onChanged: (value) {
-                  setState(() => _selectedMachineId = value);
+                validator: (value) {
+                  if (value == null) {
+                    return 'Bitte Produktionslinie auswählen';
+                  }
+                  return null;
                 },
-                validator: (value) =>
-                value == null ? 'Bitte Maschine auswählen' : null,
+                onChanged: (value) {
+                  setState(() {
+                    _selectedMachineLine = value;
+                    _selectedMachineType = null; // Zurücksetzen der Maschinentyp-Auswahl
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _selectedMachineType,
+                decoration: const InputDecoration(
+                  labelText: 'Maschinentyp',
+                  border: OutlineInputBorder(),
+                ),
+                items: _machineTypes.map((type) {
+                  return DropdownMenuItem(
+                    value: type,
+                    child: Text(type),
+                  );
+                }).toList(),
+                validator: (value) {
+                  if (value == null) {
+                    return 'Bitte Maschinentyp auswählen';
+                  }
+                  return null;
+                },
+                onChanged: (value) {
+                  setState(() => _selectedMachineType = value);
+                },
               ),
               const SizedBox(height: 16),
 

@@ -39,7 +39,7 @@ class UserService extends ChangeNotifier {
       }
 
       final response = await http.post(
-        Uri.parse('http://nsylelsq.ddns.net:5004/api/users/login'),
+        Uri.parse('https://nsylelsq.ddns.net:443/api/users/login'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -214,7 +214,7 @@ class UserService extends ChangeNotifier {
   Future<bool> updateUser(Map<String, dynamic> userData) async {
     try {
       final response = await http.put(
-        Uri.parse('http://nsylelsq.ddns.net:5004/api/users/${userData['id']}'),
+        Uri.parse('https://nsylelsq.ddns.net:443/api/users/${userData['id']}'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -233,7 +233,7 @@ class UserService extends ChangeNotifier {
   Future<bool> deactivateUser(String userId) async {
     try {
       final response = await http.delete(
-        Uri.parse('http://nsylelsq.ddns.net:5004/api/users/$userId'),
+        Uri.parse('https://nsylelsq.ddns.net:443/api/users/$userId'),
         headers: {
           'Accept': 'application/json',
         },
@@ -248,7 +248,7 @@ class UserService extends ChangeNotifier {
   Future<bool> resetPassword(String userId, String newPassword) async {
     try {
       final response = await http.put(
-        Uri.parse('http://nsylelsq.ddns.net:5004/api/users/$userId/password'),
+        Uri.parse('https://nsylelsq.ddns.net:443/api/users/$userId/password'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

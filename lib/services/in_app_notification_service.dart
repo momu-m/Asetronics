@@ -39,7 +39,7 @@ class InAppNotification {
 
 class InAppNotificationService extends ChangeNotifier {
   List<InAppNotification> _notifications = [];
-  final String _apiUrl = 'http://192.168.1.21:5004/api';
+  final String _apiUrl = 'https://nsylelsq.ddns.net:443/api';
   Timer? _refreshTimer;
   final User? _currentUser = userService.currentUser;
 

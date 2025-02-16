@@ -27,7 +27,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     setState(() => _isLoading = true);
     try {
       final response = await http.get(
-        Uri.parse('http://nsylelsq.ddns.net:5004/api/users'),
+        Uri.parse('https://nsylelsq.ddns.net:443/api/users'),
         headers: {
           'Accept': 'application/json',
         },
@@ -155,7 +155,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     if (confirm == true) {
       try {
         final response = await http.delete(
-          Uri.parse('http://nsylelsq.ddns.net:5004/api/users/${user['id']}'),
+          Uri.parse('https://nsylelsq.ddns.net:443/api/users/${user['id']}'),
           headers: {
             'Accept': 'application/json',
           },

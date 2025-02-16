@@ -1,10 +1,10 @@
 // settings_screen.dart
 import 'package:flutter/material.dart';
-import 'services/theme_service.dart';
-import 'services/settings_service.dart';
+import '../../services/theme_service.dart';
+import '../../services/settings_service.dart';
 import 'settings_model.dart';
 import 'package:provider/provider.dart';
-import 'services/biometric_service.dart';
+import '../../services/biometric_service.dart';
 
 
 class SettingsScreen extends StatefulWidget {

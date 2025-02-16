@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
 import 'package:universal_html/html.dart' as html;
 import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 
 
 
@@ -24,6 +25,7 @@ class _ProblemDatabaseScreenState extends State<ProblemDatabaseScreen> {
   String _selectedFilter = 'all';
   List<Map<String, dynamic>> _problems = [];
   List<Map<String, dynamic>> _reports = [];
+  List<Map<String, dynamic>> _tasks = [];
   List<Map<String, dynamic>> _maintenanceReports = [];
   User? _currentUser;
 
@@ -61,27 +63,54 @@ class _ProblemDatabaseScreenState extends State<ProblemDatabaseScreen> {
     }
   }
 
+  // Erweiterte Methode zum Laden aller Daten
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      // Lade Fehlermeldungen
+      // 1. Lade Fehlermeldungen
       final errorResponse = await ApiConfig.sendRequest(
         url: '${ApiConfig.errorsUrl}',
         method: 'GET',
       );
 
+      // 2. Lade Wartungsaufgaben
+      final taskResponse = await ApiConfig.sendRequest(
+        url: '${ApiConfig.tasksUrl}',
+        method: 'GET',
+      );
+
+      // 3. Lade Wartungsberichte
       final reportResponse = await ApiConfig.sendRequest(
-        url: '${ApiConfig.maintenanceTasksUrl}',
+        url: '${ApiConfig.maintenanceUrl}/reports',
         method: 'GET',
       );
 
       if (errorResponse.statusCode == 200) {
         _problems = List<Map<String, dynamic>>.from(jsonDecode(errorResponse.body));
+        // Filtere nur gelöste Probleme
+        _problems = _problems.where((p) =>
+        p['status'] == 'resolved' || p['status'] == 'closed'
+        ).toList();
+      }
+
+      if (taskResponse.statusCode == 200) {
+        _tasks = List<Map<String, dynamic>>.from(jsonDecode(taskResponse.body));
+        // Filtere nur abgeschlossene Aufgaben
+        _tasks = _tasks.where((t) => t['status'] == 'completed').toList();
       }
 
       if (reportResponse.statusCode == 200) {
         _reports = List<Map<String, dynamic>>.from(jsonDecode(reportResponse.body));
       }
+
+      // Sortiere alle Daten nach Datum
+      final allData = [..._problems, ..._tasks, ..._reports];
+      allData.sort((a, b) {
+        final dateA = _parseDate(a['created_at']);
+        final dateB = _parseDate(b['created_at']);
+        if (dateA == null || dateB == null) return 0;
+        return dateB.compareTo(dateA);
+      });
 
     } catch (e) {
       print('Fehler beim Laden der Daten: $e');
@@ -96,7 +125,6 @@ class _ProblemDatabaseScreenState extends State<ProblemDatabaseScreen> {
       }
     }
   }
-
   Future<void> _loadReports() async {
     setState(() => _isLoading = true);
     try {
@@ -131,16 +159,157 @@ class _ProblemDatabaseScreenState extends State<ProblemDatabaseScreen> {
     }
   }
 
-  List<Map<String, dynamic>> _getFilteredData() {
-    switch (_selectedFilter) {
+
+// Neue generische Löschfunktion für alle Typen
+  Future<void> _showDeleteConfirmation(Map<String, dynamic> item, String type) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eintrag löschen'),
+        content: Text('Möchten Sie diesen ${_getTypeName(type)} wirklich löschen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        String endpoint;
+        switch(type) {
+          case 'error':
+            endpoint = '${ApiConfig.errorsUrl}/${item['id']}';
+            break;
+          case 'maintenance':
+            endpoint = '${ApiConfig.maintenanceUrl}/reports/${item['id']}';
+            break;
+          case 'task':
+            endpoint = '${ApiConfig.tasksUrl}/${item['id']}';
+            break;
+          default:
+            throw Exception('Unbekannter Typ');
+        }
+
+        final response = await http.delete(
+          Uri.parse(endpoint),
+          headers: {'Accept': 'application/json'},
+        );
+
+        if (response.statusCode == 200) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Eintrag wurde gelöscht'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            _loadData(); // Daten neu laden
+          }
+        } else {
+          throw Exception('Fehler beim Löschen');
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fehler: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+// Hilfsfunktion für den Typ-Namen
+  String _getTypeName(String type) {
+    switch(type) {
+      case 'error':
+        return 'Fehlermeldung';
+      case 'maintenance':
+        return 'Wartungsbericht';
+      case 'task':
+        return 'Aufgabe';
+      default:
+        return 'Eintrag';
+    }
+  }
+// In den Build-Methoden die _getFilteredData Funktion verwenden:
+  Widget _buildErrorList() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final filteredData = _getFilteredData('errors');  // Hier verwenden wir die Funktion
+
+    if (filteredData.isEmpty) {
+      return const Center(child: Text('Keine gelösten Fehlermeldungen vorhanden'));
+    }
+
+    return ListView.builder(
+      itemCount: filteredData.length,
+      itemBuilder: (context, index) => _buildItemCard(filteredData[index], 'error'),
+    );
+  }
+
+  Widget _buildReportList() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final filteredData = _getFilteredData('reports');  // Verwenden der Funktion
+
+    if (filteredData.isEmpty) {
+      return const Center(child: Text('Keine Wartungsberichte vorhanden'));
+    }
+
+    return ListView.builder(
+      itemCount: filteredData.length,
+      itemBuilder: (context, index) => _buildItemCard(filteredData[index], 'maintenance'),
+    );
+  }
+
+  Widget _buildAllReportsList() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final filteredData = _getFilteredData('all');  // Verwenden der Funktion
+
+    if (filteredData.isEmpty) {
+      return const Center(child: Text('Keine Berichte vorhanden'));
+    }
+
+    return ListView.builder(
+      itemCount: filteredData.length,
+      itemBuilder: (context, index) => _buildItemCard(filteredData[index], 'all'),
+    );
+  }
+
+// Angepasste Filterfunktion, die jetzt den Filtertyp als Parameter erhält
+  List<Map<String, dynamic>> _getFilteredData(String filterType) {
+    switch (filterType) {
       case 'errors':
         return _problems.where((p) =>
         p['status'] == 'resolved' || p['status'] == 'closed'
         ).toList();
       case 'reports':
         return _reports;
+      case 'tasks':
+        return _tasks.where((t) =>
+        t['status'] == 'completed'
+        ).toList();
+      case 'all':
       default:
-        final allData = [..._problems, ..._reports];
+        final allData = [..._problems, ..._tasks, ..._reports];
         allData.sort((a, b) {
           final dateA = _parseDate(a['created_at']);
           final dateB = _parseDate(b['created_at']);
@@ -150,57 +319,6 @@ class _ProblemDatabaseScreenState extends State<ProblemDatabaseScreen> {
         return allData;
     }
   }
-
-  Widget _buildErrorList() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    final solvedErrors = _problems.where((error) =>
-    error['status'] == 'resolved' || error['status'] == 'closed'
-    ).toList();
-
-    if (solvedErrors.isEmpty) {
-      return const Center(child: Text('Keine gelösten Fehlermeldungen vorhanden'));
-    }
-
-    return ListView.builder(
-      itemCount: solvedErrors.length,
-      itemBuilder: (context, index) => _buildErrorCard(solvedErrors[index]),
-    );
-  }
-
-  Widget _buildReportList() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_reports.isEmpty) {
-      return const Center(child: Text('Keine Wartungsberichte vorhanden'));
-    }
-
-    return ListView.builder(
-      itemCount: _reports.length,
-      itemBuilder: (context, index) => _buildReportCard(_reports[index]),
-    );
-  }
-
-  Widget _buildAllReportsList() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    final allReports = [..._problems, ..._reports];
-    if (allReports.isEmpty) {
-      return const Center(child: Text('Keine Berichte vorhanden'));
-    }
-
-    return ListView.builder(
-      itemCount: allReports.length,
-      itemBuilder: (context, index) => _buildItemCard(allReports[index]),
-    );
-  }
-
   Widget _buildErrorCard(Map<String, dynamic> error) {
     return Card(
       margin: const EdgeInsets.all(8),
@@ -219,35 +337,83 @@ class _ProblemDatabaseScreenState extends State<ProblemDatabaseScreen> {
     );
   }
 
-  Widget _buildReportCard(Map<String, dynamic> report) {
-    return Card(
-      margin: const EdgeInsets.all(8),
-      child: ListTile(
-        title: Text(report['title'] ?? 'Kein Titel'),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Maschinentyp: ${report['machine_type'] ?? 'Nicht angegeben'}'),
-            Text('Datum: ${_formatDate(report['date'])}'),
-            Text('Arbeitszeit: ${report['worked_time']} Minuten'),
-          ],
+
+  Widget _buildImageGallery(dynamic imagesData) {
+    List<dynamic> images = [];
+
+    // Konvertiere die Bilddaten in eine Liste
+    if (imagesData is List) {
+      images = imagesData;
+    } else if (imagesData is String) {
+      try {
+        images = json.decode(imagesData) ?? [];
+      } catch (e) {
+        print('Fehler beim Parsen der Bilddaten: $e');
+        return const SizedBox.shrink();
+      }
+    }
+
+    if (images.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        const Text('Bilder:', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 120,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: images.length,
+            itemBuilder: (context, index) {
+              final imageStr = images[index];
+              try {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: InkWell(
+                    onTap: () => _showFullImage(imageStr),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        base64Decode(imageStr.split(',').last),
+                        height: 120,
+                        width: 120,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          print('Fehler beim Laden des Bildes: $error');
+                          return Container(
+                            height: 120,
+                            width: 120,
+                            color: Colors.grey[300],
+                            child: const Icon(Icons.error),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              } catch (e) {
+                print('Fehler bei der Bildverarbeitung: $e');
+                return const SizedBox.shrink();
+              }
+            },
+          ),
         ),
-        onTap: () => _showReportDetails(report),
-      ),
+      ],
     );
   }
 
-  Widget _buildItemCard(Map<String, dynamic> item) {
-    final bool isReport = item.containsKey('worked_time');
-    final DateTime? createdAt = _parseDate(item['created_at']);
-
+  Widget _buildItemCard(Map<String, dynamic> item, String type) {
     return Card(
       elevation: 4,
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: ListTile(
         leading: Icon(
-          isReport ? Icons.assignment : Icons.warning,
-          color: isReport ? Colors.blue : Colors.orange,
+          _getItemIcon(type),
+          color: _getItemColor(type, item),
         ),
         title: Text(
           item['title'] ?? 'Kein Titel',
@@ -257,35 +423,51 @@ class _ProblemDatabaseScreenState extends State<ProblemDatabaseScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Maschinentyp: ${item['machine_type'] ?? 'Nicht angegeben'}'),
-            if (createdAt != null)
-              Text('Erstellt am: ${_formatDate(createdAt)}'),
-            if (!isReport)
-              Text('Status: ${_getStatusText(item['status'])}'),
-            if (isReport)
+            Text('Datum: ${_formatDate(item['created_at'])}'),
+            if (type == 'maintenance')
               Text('Arbeitszeit: ${item['worked_time']} Minuten'),
-            FutureBuilder<String>(
-              future: userService.getUserName(item['created_by'] ?? ''),
-              builder: (context, snapshot) {
-                return Text(
-                  'Erstellt von: ${snapshot.data ?? 'Wird geladen...'}',
-                  style: const TextStyle(fontStyle: FontStyle.italic),
-                );
-              },
-            ),
+            if (item['images'] != null && item['images'] != '[]')
+              const Text('📷 Bilder vorhanden',
+                  style: TextStyle(color: Colors.blue)),
           ],
         ),
-
         trailing: IconButton(
-          icon: const Icon(Icons.arrow_forward_ios),
-          onPressed: () => _showDetailsDialog(item, isReport),
+          icon: const Icon(Icons.info_outline),
+          onPressed: () => _showDetailsDialog(item, type),
         ),
       ),
     );
   }
 
-  void _showDetailsDialog(Map<String, dynamic> item, bool isReport) {
-    final DateTime? resolvedAt = _parseDate(item['resolved_at']);
+// Hilfsmethoden für Icons und Farben
+  IconData _getItemIcon(String type) {
+    switch(type) {
+      case 'error':
+        return Icons.warning;
+      case 'maintenance':
+        return Icons.build;
+      case 'task':
+        return Icons.assignment;
+      default:
+        return Icons.info;
+    }
+  }
 
+  Color _getItemColor(String type, Map<String, dynamic> item) {
+    switch(type) {
+      case 'error':
+        return item['is_urgent'] == 1 ? Colors.red : Colors.orange;
+      case 'maintenance':
+        return Colors.blue;
+      case 'task':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+
+  void _showDetailsDialog(Map<String, dynamic> item, String type) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -295,19 +477,37 @@ class _ProblemDatabaseScreenState extends State<ProblemDatabaseScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Beschreibung
               Text('Beschreibung:',
                   style: Theme.of(context).textTheme.titleSmall),
               Text(item['description'] ?? 'Keine Beschreibung'),
               const Divider(),
-              if (isReport) ...[
-                Text('Verwendete Teile:',
-                    style: Theme.of(context).textTheme.titleSmall),
-                Text(item['parts_used'] ?? 'Keine Teile verwendet'),
-              ] else ...[
-                Text('Status: ${_getStatusText(item['status'])}'),
-                if (resolvedAt != null)
-                  Text('Gelöst am: ${_formatDate(resolvedAt)}'),
-              ],
+
+              // Spezifische Informationen je nach Typ
+              _buildTypeSpecificInfo(item, type),
+
+              // Bilder
+              if (item['images'] != null && item['images'] != '[]')
+                _buildImageGallery(item['images']),
+
+              // Aktionsbuttons
+              if (_currentUser?.role == UserRole.admin)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton.icon(
+                        icon: const Icon(Icons.delete),
+                        label: const Text('Löschen'),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _showDeleteConfirmation(item, type);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -320,6 +520,46 @@ class _ProblemDatabaseScreenState extends State<ProblemDatabaseScreen> {
       ),
     );
   }
+
+  Widget _buildTypeSpecificInfo(Map<String, dynamic> item, String type) {
+    switch (type) {
+      case 'error':
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Status: ${_getStatusText(item['status'])}'),
+            Text('Gelöst am: ${_formatDate(item['resolved_at'])}'),
+            Text('Kategorie: ${item['category'] ?? 'Keine Kategorie'}'),
+            Text('Unterkategorie: ${item['subcategory'] ?? 'Keine Unterkategorie'}'),
+          ],
+        );
+
+      case 'maintenance':
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Arbeitszeit: ${item['worked_time']} Minuten'),
+            Text('Verwendete Teile: ${item['parts_used'] ?? 'Keine Teile verwendet'}'),
+            Text('Durchgeführt am: ${_formatDate(item['date'])}'),
+          ],
+        );
+
+      case 'task':
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Bearbeiter: ${item['assigned_to_name'] ?? 'Nicht zugewiesen'}'),
+            Text('Fällig am: ${_formatDate(item['due_date'])}'),
+            Text('Abgeschlossen am: ${_formatDate(item['completed_at'])}'),
+            Text('Geschätzte Dauer: ${item['estimated_duration']} Minuten'),
+          ],
+        );
+
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
 
   String _getStatusText(String? status) {
     switch (status) {
@@ -786,11 +1026,6 @@ class _ProblemDatabaseScreenState extends State<ProblemDatabaseScreen> {
             unselectedLabelColor: Colors.grey,
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.file_download),
-              tooltip: 'Exportieren',
-              onPressed: _exportData,
-            ),
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: _loadData,

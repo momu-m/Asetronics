@@ -12,7 +12,7 @@ class ApiService {
   ApiService._internal();
 
   // API URL
-  final String apiUrl = 'http://192.168.1.21:5004/api/data';
+  final String apiUrl = 'https://nsylelsq.ddns.net:443/api/data';
 
   // Debug-Modus für Logging
   final bool _debug = true;

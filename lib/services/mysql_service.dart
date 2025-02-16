@@ -60,7 +60,7 @@ class MySQLService extends ChangeNotifier {
 
       // Neue URL für data/query endpoint
       final response = await http.post(
-        Uri.parse('http://nsylelsq.ddns.net:5004/api/data/query'),
+        Uri.parse('https://nsylelsq.ddns.net:443/api/data/query'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

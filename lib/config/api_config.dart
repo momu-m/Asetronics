@@ -1,17 +1,18 @@
 // lib/config/api_config.dart
 import 'package:http/http.dart' as http;
 import 'dart:async';
+import 'dart:io'; // Für die Zertifikatsvalidierung
 
 class ApiConfig {
   static const String _domain = 'nsylelsq.ddns.net';
-  static const int _port = 5004;
+  static const int _port = 443; // Port auf 443 ändern, da HTTPS verwendet wird
 
   // Timeout-Einstellungen
   static const Duration connectionTimeout = Duration(seconds: 15);
   static const Duration responseTimeout = Duration(seconds: 30);
 
   // Getter für die Basis-URL
-  static String get baseUrl => 'http://$_domain:$_port/api';
+  static String get baseUrl => 'https://$_domain:$_port/api'; // HTTPS verwenden
 
   // Standard-Header für API-Anfragen
   static Map<String, String> get defaultHeaders => {
@@ -33,7 +34,6 @@ class ApiConfig {
   static String get techniciansUrl => '$baseUrl/users?role=technician';
 
   // Verbesserte HTTP-Client Methode mit Debug-Logging
-  // In api_config.dart - existierende Methode anpassen
   static Future<http.Response> sendRequest({
     required String url,
     required String method,
@@ -60,7 +60,7 @@ class ApiConfig {
           response = await http.get(
             uri,
             headers: finalHeaders,
-          ).timeout(const Duration(seconds: 10));
+          ).timeout(responseTimeout);
           break;
 
         case 'POST':
@@ -70,7 +70,7 @@ class ApiConfig {
             uri,
             headers: finalHeaders,
             body: body,
-          ).timeout(const Duration(seconds: 10));
+          ).timeout(responseTimeout);
           break;
 
         case 'PATCH':
@@ -80,7 +80,7 @@ class ApiConfig {
             uri,
             headers: finalHeaders,
             body: body,
-          ).timeout(const Duration(seconds: 10));
+          ).timeout(responseTimeout);
           break;
 
         default:
@@ -93,6 +93,7 @@ class ApiConfig {
       print('⌛ Dauer: ${duration.inMilliseconds}ms');
       print('📊 Status Code: ${response.statusCode}');
       print('📄 Response Body Length: ${response.body.length}');
+
       return response;
 
     } catch (e) {
@@ -103,6 +104,7 @@ class ApiConfig {
       rethrow;
     }
   }
+
   // Neue Methode für Verbindungstest
   static Future<bool> testConnection() async {
     try {

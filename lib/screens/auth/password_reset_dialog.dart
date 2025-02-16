@@ -30,7 +30,7 @@ class _PasswordResetDialogState extends State<PasswordResetDialog> {
 
     try {
       final response = await http.put(
-        Uri.parse('http://nsylelsq.ddns.net:5004/api/users/${widget.userId}/password'),
+        Uri.parse('https://nsylelsq.ddns.net:443/api/users/${widget.userId}/password'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

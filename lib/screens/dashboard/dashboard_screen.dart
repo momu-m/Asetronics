@@ -139,6 +139,16 @@ class DashboardScreen extends StatelessWidget {
                   delay: 400,
                 ),
                 const AnimatedDashboardTile(
+                  icon: Icons.description,
+                  title: 'Bericht schreiben',
+                  delay: 900,
+                ),
+                const AnimatedDashboardTile(
+                  icon: Icons.menu_book,
+                  title: 'Anleitung',
+                  delay: 700,
+                ),
+                const AnimatedDashboardTile(
                   icon: Icons.storage,
                   title: 'Problem-Datenbank',
                   delay: 500,
@@ -149,16 +159,6 @@ class DashboardScreen extends StatelessWidget {
                     title: 'Benutzerverwaltung',
                     delay: 600,
                   ),
-                const AnimatedDashboardTile(
-                  icon: Icons.description,
-                  title: 'Bericht schreiben',
-                  delay: 900,
-                ),
-                const AnimatedDashboardTile(
-                  icon: Icons.menu_book,
-                  title: 'Anleitung',
-                  delay: 700,
-                ),
                 const AnimatedDashboardTile(
                   icon: Icons.settings,
                   title: 'Einstellungen',

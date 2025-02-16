@@ -8,7 +8,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 class ImprovedTaskService extends ChangeNotifier {
-  static const String _apiUrl = 'http://192.168.1.21:5004/api';
+  static const String _apiUrl = 'https://nsylelsq.ddns.net:443/api';
 
   // Status-Mapping für korrekte Datenbankwerte
   static const Map<MaintenanceTaskStatus, String> _statusMapping = {

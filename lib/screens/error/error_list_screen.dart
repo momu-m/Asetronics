@@ -162,7 +162,26 @@ class _ErrorListScreenState extends State<ErrorListScreen> {
   }
 
   // Erstellt eine Bildergalerie für die Fehlermeldung
-  Widget _buildImageGallery(List images) {
+  // Erstellt eine Bildergalerie für die Fehlermeldung
+  Widget _buildImageGallery(dynamic imagesData) {
+    // Konvertiere die Bilddaten in eine Liste
+    List<dynamic> images = [];
+    if (imagesData is List) {
+      images = imagesData;
+    } else if (imagesData is String) {
+      try {
+        // Versuche String als JSON zu parsen, falls es als JSON-String gespeichert wurde
+        images = json.decode(imagesData) ?? [];
+      } catch (e) {
+        print('Fehler beim Parsen der Bilddaten: $e');
+        return const SizedBox.shrink();
+      }
+    }
+
+    if (images.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -176,8 +195,6 @@ class _ErrorListScreenState extends State<ErrorListScreen> {
             itemCount: images.length,
             itemBuilder: (context, index) {
               final imageStr = images[index];
-              // Debug-Ausgabe
-              print('Loading image $index: ${imageStr.substring(0, 50)}...');
               try {
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -191,7 +208,7 @@ class _ErrorListScreenState extends State<ErrorListScreen> {
                         width: 120,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
-                          print('Error loading image: $error');
+                          print('Fehler beim Laden des Bildes: $error');
                           return Container(
                             height: 120,
                             width: 120,
@@ -204,7 +221,7 @@ class _ErrorListScreenState extends State<ErrorListScreen> {
                   ),
                 );
               } catch (e) {
-                print('Error processing image: $e');
+                print('Fehler bei der Bildverarbeitung: $e');
                 return const SizedBox.shrink();
               }
             },
@@ -213,7 +230,6 @@ class _ErrorListScreenState extends State<ErrorListScreen> {
       ],
     );
   }
-
   // Erstellt Aktionsschaltflächen für die Fehlermeldung
   Widget _buildActionButtons(Map<String, dynamic> error) {
     return Row(
@@ -352,12 +368,30 @@ class _ErrorListScreenState extends State<ErrorListScreen> {
   }
 
   // Formatiert ein Datum
+  // In error_list_screen.dart die Methode _formatDate verbessern:
   String _formatDate(String? dateStr) {
     if (dateStr == null) return 'Nicht verfügbar';
     try {
-      final date = DateTime.parse(dateStr);
+      // Versuche verschiedene Datumsformate
+      DateTime? date;
+
+      // Format: "Sat, 01 Feb 2025 10:42:55 GMT"
+      if (dateStr.contains('GMT')) {
+        date = DateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", 'en_US').parse(dateStr);
+      }
+      // Format: "2025-02-01T10:42:55"
+      else if (dateStr.contains('T')) {
+        date = DateTime.parse(dateStr);
+      }
+      // Format: "2025-02-01 10:42:55"
+      else {
+        date = DateFormat("yyyy-MM-dd HH:mm:ss").parse(dateStr);
+      }
+
+      // Formatiere das Datum in deutsches Format
       return DateFormat('dd.MM.yyyy HH:mm').format(date);
     } catch (e) {
+      print('Fehler beim Parsen des Datums $dateStr: $e');
       return 'Ungültiges Datum';
     }
   }
@@ -382,50 +416,136 @@ class _ErrorListScreenState extends State<ErrorListScreen> {
   }
 
   // Baut eine Karte für eine einzelne Fehlermeldung
+  // In error_list_screen.dart die Widget-Methode anpassen
+
   Widget _buildErrorCard(Map<String, dynamic> error) {
-    final status = error['status'] ?? 'new';
-    final Color statusColor = statusColors[status] ?? Colors.grey;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        leading: Icon(
-          Icons.error_outline,
-          color: statusColor,
+      child: ExpansionTile(
+        // Titel mit Dringlichkeitsindikator
+        title: Row(
+          children: [
+            if (error['is_urgent'] == 1)
+              const Icon(Icons.warning, color: Colors.red, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                error['title'] ?? 'Keine Bezeichnung',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
         ),
-        title: Text(
-          error['title'] ?? 'Keine Bezeichnung',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        // Basisinformationen
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Maschinentyp: ${error['machine_type'] ?? 'Nicht angegeben'}'),
-            Text('Status: ${statusDisplayNames[status] ?? status}'),
-            // Hier fügen wir den Benutzernamen ein
-            FutureBuilder<String>(
-              future: userService.getUserName(error['created_by']),
-              builder: (context, snapshot) {
-                return Text('Erstellt von: ${snapshot.data ?? 'Wird geladen...'}');
-              },
-            ),
-            Text('Erstellt am: ${_formatDate(error['created_at'])}'),
+            _buildInfoRow('Kategorie:', error['category'] ?? 'Nicht kategorisiert'),
+            _buildInfoRow('Linie:', error['line'] ?? 'Nicht zugeordnet'),
+            _buildInfoRow('Status:', _getStatusWithIcon(error['status'])),
+            _buildInfoRow('Erstellt:', _formatDate(error['created_at'])),
+            // Benutzerinformation direkt anzeigen
+            if (error['creator_info'] != null)
+              _buildInfoRow('Erstellt von:', error['creator_info']['name'] ?? 'Unbekannt'),
           ],
         ),
-        trailing: _currentUser?.role == UserRole.admin ||
-            _currentUser?.role == UserRole.technician
-            ? PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert),
-          onSelected: (newStatus) => _updateErrorStatus(error['id'], newStatus),
-          itemBuilder: (context) => statusDisplayNames.entries
-              .where((entry) => entry.key != status)
-              .map((entry) => PopupMenuItem(
-            value: entry.key,
-            child: Text(entry.value),
-          ))
-              .toList(),
-        )
-            : null,
-        onTap: () => _showErrorDetails(error),
+        // Erweiterte Details
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Detaillierte Informationen
+                const Text(
+                  'Details:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                _buildDetailSection('Standort:', error['location']),
+                _buildDetailSection('Maschinentyp:', error['machine_type']),
+                _buildDetailSection('Unterkategorie:', error['subcategory']),
+
+                const Divider(),
+
+                // Beschreibung
+                const Text(
+                  'Problembeschreibung:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(error['description'] ?? 'Keine Beschreibung vorhanden'),
+
+                // Bilder-Sektion
+                if (error['images'] != null) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Bilder:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildImageGallery(error['images']),
+                ],
+
+                // Aktionsbuttons
+                if (_currentUser?.role == UserRole.admin ||
+                    _currentUser?.role == UserRole.technician)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.edit),
+                          label: const Text('Status ändern'),
+                          onPressed: () => _showStatusDialog(error),
+                        ),
+                        const SizedBox(width: 8),
+                        if (_currentUser?.role == UserRole.admin)
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.delete),
+                            label: const Text('Löschen'),
+                            onPressed: () => _confirmDelete(error),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Hilfsmethode zum Bauen von Informationszeilen
+  Widget _buildInfoRow(String label, dynamic content) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.grey,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: content is Widget
+                ? content
+                : Text(
+              content?.toString() ?? 'Nicht verfügbar',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -482,7 +602,121 @@ class _ErrorListScreenState extends State<ErrorListScreen> {
       ),
     );
   }
+// In der _ErrorListScreenState Klasse folgende Methoden hinzufügen:
 
+// Status mit Icon anzeigen
+  Widget _getStatusWithIcon(String? status) {
+    final statusText = _getStatusText(status);
+    final color = _getStatusColor(status);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          _getStatusIcon(status),
+          size: 16,
+          color: color,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          statusText,
+          style: TextStyle(color: color, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+// Icon für den Status
+  IconData _getStatusIcon(String? status) {
+    switch(status) {
+      case 'new':
+        return Icons.fiber_new;
+      case 'in_progress':
+        return Icons.pending;
+      case 'resolved':
+        return Icons.check_circle;
+      case 'closed':
+        return Icons.done_all;
+      default:
+        return Icons.help_outline;
+    }
+  }
+
+// Farbe für den Status
+  Color _getStatusColor(String? status) {
+    switch(status) {
+      case 'new':
+        return Colors.red;
+      case 'in_progress':
+        return Colors.orange;
+      case 'resolved':
+        return Colors.green;
+      case 'closed':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
+// Detail-Sektion bauen
+  Widget _buildDetailSection(String label, dynamic value) {
+    if (value == null || value.toString().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(value.toString()),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Status-Dialog anzeigen
+  Future<void> _showStatusDialog(Map<String, dynamic> error) async {
+    final newStatus = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Status ändern'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: statusDisplayNames.entries.map((entry) =>
+              RadioListTile<String>(
+                title: Text(entry.value),
+                value: entry.key,
+                groupValue: error['status'],
+                onChanged: (value) => Navigator.pop(context, value),
+              ),
+          ).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+        ],
+      ),
+    );
+
+    if (newStatus != null && newStatus != error['status']) {
+      await _updateErrorStatus(error['id'], newStatus);
+    }
+  }
   @override
   Widget build(BuildContext context) {
     final filteredErrors = _getFilteredErrors();

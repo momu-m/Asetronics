@@ -19,7 +19,7 @@ import 'screens/test/mysql_connection_test.dart';
 import 'screens/test/mysql_test_screen.dart';
 import 'screens/test/test_mysql_service.dart';
 import 'services/in_app_notification_service.dart';
-import 'settings_model.dart';
+import 'screens/settings/settings_model.dart';
 import 'screens/manual/manual_screen.dart';
 import 'screens/tasks/planner/task_detail_screen.dart';
 import 'screens/auth/login_screen.dart';
@@ -31,7 +31,7 @@ import 'screens/maintenance/maintenance_list_screen.dart';
 import 'screens/tasks/personal/task_screen.dart';
 import 'screens/auth/user_management_screen.dart';
 import 'screens/machine/qr_scanner_screen.dart';
-import 'settings_screen.dart';
+import 'screens/settings/settings_screen.dart';
 import 'screens/tasks/planner/planner_screen.dart';
 import 'screens/tasks/personal/task_screen.dart';
 

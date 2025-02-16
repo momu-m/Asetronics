@@ -1,6 +1,6 @@
 // theme_service.dart
 import 'package:flutter/material.dart';
-import '../settings_model.dart';
+import '../screens/settings/settings_model.dart';
 
 class ThemeService extends ChangeNotifier {
   // Singleton-Pattern Implementation

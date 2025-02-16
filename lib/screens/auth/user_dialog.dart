@@ -50,7 +50,7 @@ class _UserDialogState extends State<UserDialog> {
       setState(() => _isLoading = true);
 
       final response = await http.post(
-        Uri.parse('http://nsylelsq.ddns.net:5004/api/users/${widget.user!['id']}/reset-password'),
+        Uri.parse('https://nsylelsq.ddns.net:443/api/users/${widget.user!['id']}/reset-password'),
         headers: {'Content-Type': 'application/json'},
       );
 
@@ -92,7 +92,7 @@ class _UserDialogState extends State<UserDialog> {
         // Neuer Benutzer
         userData['password'] = _passwordController.text.trim();
         final response = await http.post(
-          Uri.parse('http://nsylelsq.ddns.net:5004/api/users'),
+          Uri.parse('https://nsylelsq.ddns.net:443/api/users'),
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -106,7 +106,7 @@ class _UserDialogState extends State<UserDialog> {
       } else {
         // Bestehender Benutzer
         final response = await http.put(
-          Uri.parse('http://nsylelsq.ddns.net:5004/api/users/${widget.user!['id']}'),
+          Uri.parse('https://nsylelsq.ddns.net:443/api/users/${widget.user!['id']}'),
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',

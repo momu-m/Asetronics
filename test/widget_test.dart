@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:asetronics_ag_app/main.dart';
-import 'package:asetronics_ag_app/settings_model.dart';
+import 'package:asetronics_ag_app/screens/settings/settings_model.dart';
 import 'package:asetronics_ag_app/services/theme_service.dart';
 import 'package:asetronics_ag_app/services/error_report_service.dart';
 import 'package:asetronics_ag_app/services/user_service.dart';
