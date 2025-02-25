@@ -5,6 +5,7 @@ import '../../../models/task_model.dart';
 import '../../../models/maintenance_schedule.dart';
 import '../../../models/user_role.dart';
 import '../../../main.dart' show taskService, maintenanceScheduleService, userService;
+import 'task_feedback_screen.dart';
 
 class TaskScreen extends StatefulWidget {
   const TaskScreen({Key? key}) : super(key: key);
@@ -66,6 +67,18 @@ class _TaskScreenState extends State<TaskScreen> {
         }
       }
 
+      // Prüfe ob a oder b eine MaintenanceTask mit urgent Priorität ist
+      if (a is MaintenanceTask && b is Task) {
+        if (a.priority == MaintenancePriority.urgent && b.priority != TaskPriority.urgent) {
+          return -1;
+        }
+      }
+      if (a is Task && b is MaintenanceTask) {
+        if (a.priority == TaskPriority.urgent && b.priority != MaintenancePriority.urgent) {
+          return -1;
+        }
+      }
+
       // Dann nach Datum
       final dateA = a is Task ? a.deadline : (a as MaintenanceTask).nextDue;
       final dateB = b is Task ? b.deadline : (b as MaintenanceTask).nextDue;
@@ -86,6 +99,9 @@ class _TaskScreenState extends State<TaskScreen> {
           if (task is Task) {
             return task.priority == TaskPriority.urgent;
           }
+          if (task is MaintenanceTask) {
+            return task.priority == MaintenancePriority.urgent;
+          }
           return false;
         case 'overdue':
           final date = task is Task ? task.deadline : (task as MaintenanceTask).nextDue;
@@ -104,40 +120,178 @@ class _TaskScreenState extends State<TaskScreen> {
     }).toList();
   }
 
+  // Diese Methode öffnet den Feedback-Bildschirm für eine Aufgabe
+  void _openTaskFeedback(dynamic task) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskFeedbackScreen(task: task),
+      ),
+    ).then((result) {
+      // Wenn Änderungen vorgenommen wurden (result == true), lade die Aufgaben neu
+      if (result == true) {
+        _loadTasks();
+      }
+    });
+  }
+
   Widget _buildTaskCard(dynamic task) {
     final bool isTask = task is Task;
     final String title = isTask ? task.title : (task as MaintenanceTask).title;
     final DateTime date = isTask ? task.deadline : task.nextDue;
     final bool isOverdue = date.isBefore(DateTime.now());
-    final bool isUrgent = isTask ? task.priority == TaskPriority.urgent : false;
+    final bool isUrgent = isTask
+        ? task.priority == TaskPriority.urgent
+        : task.priority == MaintenancePriority.urgent;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        leading: Icon(
-          isTask ? Icons.assignment : Icons.build,
-          color: isUrgent ? Colors.red : Colors.blue,
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isOverdue ? Colors.red.shade200 : Colors.transparent,
+          width: isOverdue ? 1 : 0,
         ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: isUrgent || isOverdue ? FontWeight.bold : FontWeight.normal,
+      ),
+      // Hinzufügen von InkWell, um einen Ripple-Effekt zu erzeugen
+      child: InkWell(
+        onTap: () => _openTaskFeedback(task), // Öffne Feedback-Bildschirm bei Tap
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header mit Titel und Icon
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isUrgent ? Colors.red.shade50 : Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      isTask ? Icons.assignment : Icons.build,
+                      color: isUrgent ? Colors.red : Colors.blue,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: isUrgent ? Colors.red.shade700 : null,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              size: 14,
+                              color: isOverdue ? Colors.red : Colors.grey,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Fällig: ${_formatDate(date)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isOverdue ? Colors.red : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+
+              // Zusätzliche Informationen
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Status
+                  Chip(
+                    label: Text(
+                      _getStatusText(task),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    backgroundColor: _getStatusColor(task).withOpacity(0.2),
+                    side: BorderSide(color: _getStatusColor(task)),
+                    visualDensity: VisualDensity.compact,
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  ),
+                  // Priorität / Intervall
+                  isTask
+                      ? Chip(
+                    label: Text(
+                      _getPriorityText(task.priority),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    backgroundColor: _getPriorityColor(task.priority).withOpacity(0.2),
+                    side: BorderSide(color: _getPriorityColor(task.priority)),
+                    visualDensity: VisualDensity.compact,
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  )
+                      : Chip(
+                    label: Text(
+                      _getIntervalText(task.interval),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    backgroundColor: Colors.teal.shade50,
+                    side: BorderSide(color: Colors.teal.shade200),
+                    visualDensity: VisualDensity.compact,
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  ),
+                  // "Mehr" Button
+                  IconButton(
+                    icon: const Icon(Icons.more_vert),
+                    onPressed: () => _showTaskOptions(task),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    splashRadius: 24,
+                  ),
+                ],
+              ),
+            ],
           ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Fällig am: ${_formatDate(date)}'),
-            Text('Status: ${_getStatusText(task)}'),
-            if (isTask) Text('Priorität: ${_getPriorityText(task.priority)}'),
-          ],
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.more_vert),
-          onPressed: () => _showTaskOptions(task),
         ),
       ),
     );
+  }
+
+  Color _getStatusColor(dynamic task) {
+    if (task is Task) {
+      return switch (task.status) {
+        TaskStatus.pending => Colors.orange,
+        TaskStatus.in_progress => Colors.blue,
+        TaskStatus.completed => Colors.green,
+        TaskStatus.blocked => Colors.red,
+      };
+    } else if (task is MaintenanceTask) {
+      return switch (task.status) {
+        MaintenanceTaskStatus.pending => Colors.orange,
+        MaintenanceTaskStatus.inProgress => Colors.blue,
+        MaintenanceTaskStatus.completed => Colors.green,
+        MaintenanceTaskStatus.overdue => Colors.red,
+        MaintenanceTaskStatus.deleted => Colors.grey,
+      };
+    }
+    return Colors.grey;
   }
 
   String _getStatusText(dynamic task) {
@@ -154,6 +308,7 @@ class _TaskScreenState extends State<TaskScreen> {
         MaintenanceTaskStatus.inProgress => 'In Bearbeitung',
         MaintenanceTaskStatus.completed => 'Abgeschlossen',
         MaintenanceTaskStatus.overdue => 'Überfällig',
+        MaintenanceTaskStatus.deleted => 'Gelöscht',
       };
     }
     return 'Unbekannt';
@@ -165,37 +320,90 @@ class _TaskScreenState extends State<TaskScreen> {
       TaskPriority.medium => 'Mittel',
       TaskPriority.high => 'Hoch',
       TaskPriority.urgent => 'Dringend',
-      // TODO: Handle this case.
-      TaskPriority.normal => throw UnimplementedError(),
+      TaskPriority.normal => 'Normal',
+    };
+  }
+
+  Color _getPriorityColor(TaskPriority priority) {
+    return switch (priority) {
+      TaskPriority.low => Colors.green,
+      TaskPriority.medium => Colors.blue,
+      TaskPriority.high => Colors.orange,
+      TaskPriority.urgent => Colors.red,
+      TaskPriority.normal => Colors.blue,
+    };
+  }
+
+  String _getIntervalText(MaintenanceInterval interval) {
+    return switch (interval) {
+      MaintenanceInterval.daily => 'Täglich',
+      MaintenanceInterval.weekly => 'Wöchentlich',
+      MaintenanceInterval.monthly => 'Monatlich',
+      MaintenanceInterval.quarterly => 'Vierteljährlich',
+      MaintenanceInterval.yearly => 'Jährlich',
     };
   }
 
   void _showTaskOptions(dynamic task) {
     showModalBottomSheet(
       context: context,
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.check),
-            title: const Text('Als erledigt markieren'),
-            onTap: () async { // Geändert von onPressed zu onTap
-              Navigator.pop(context);
-              await _markTaskAsCompleted(task);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.play_arrow),
-            title: const Text('Mit Bearbeitung beginnen'),
-            onTap: () async { // Geändert von onPressed zu onTap
-              Navigator.pop(context);
-              await _startTask(task);
-            },
-          ),
-        ],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Titelleiste
+            Container(
+              padding: const EdgeInsets.all(16),
+              width: double.infinity,
+              child: Text(
+                task is Task ? task.title : task.title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const Divider(),
+
+            // Beschreibung
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                task is Task ? task.description : task.description,
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Optionen
+            ListTile(
+              leading: const Icon(Icons.assignment_turned_in, color: Colors.green),
+              title: const Text('Aufgabe abschließen'),
+              subtitle: const Text('Rückmeldung geben und als erledigt markieren'),
+              onTap: () {
+                Navigator.pop(context);
+                _openTaskFeedback(task);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.play_arrow, color: Colors.blue),
+              title: const Text('Mit Bearbeitung beginnen'),
+              onTap: () async {
+                Navigator.pop(context);
+                await _startTask(task);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
+
   Future<void> _markTaskAsCompleted(dynamic task) async {
     try {
       if (task is Task) {
@@ -281,16 +489,125 @@ class _TaskScreenState extends State<TaskScreen> {
           ? const Center(child: CircularProgressIndicator())
           : filteredTasks.isEmpty
           ? Center(
-        child: Text(
-          _selectedFilter == 'all'
-              ? 'Keine Aufgaben vorhanden'
-              : 'Keine ${_selectedFilter.toLowerCase()} Aufgaben',
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _selectedFilter == 'all'
+                  ? Icons.assignment_turned_in
+                  : Icons.search_off,
+              size: 64,
+              color: Colors.grey,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _selectedFilter == 'all'
+                  ? 'Keine Aufgaben vorhanden'
+                  : 'Keine ${_selectedFilter.toLowerCase()} Aufgaben',
+              style: const TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _selectedFilter == 'all'
+                  ? 'Alle Ihre Aufgaben werden hier angezeigt'
+                  : 'Passen Sie die Filter an, um andere Aufgaben zu sehen',
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       )
-          : ListView.builder(
-        itemCount: filteredTasks.length,
-        itemBuilder: (context, index) =>
-            _buildTaskCard(filteredTasks[index]),
+          : RefreshIndicator(
+        onRefresh: _loadTasks,
+        child: ListView.builder(
+          itemCount: filteredTasks.length,
+          itemBuilder: (context, index) => _buildTaskCard(filteredTasks[index]),
+        ),
+      ),
+      // Floating Action Button für Schnellzugriff
+      floatingActionButton: _buildFloatingActionButton(),
+    );
+  }
+
+  // Floating Action Button mit erweiterten Funktionen
+  Widget _buildFloatingActionButton() {
+    return FloatingActionButton.extended(
+      onPressed: () => _showStartTaskDialog(),
+      icon: const Icon(Icons.play_arrow),
+      label: const Text('Mit Aufgabe beginnen'),
+      backgroundColor: Colors.green,
+    );
+  }
+
+  // Dialog zum Starten einer Aufgabe
+  void _showStartTaskDialog() {
+    // Filtere nur ausstehende Aufgaben
+    final pendingTasks = _allTasks.where((task) =>
+    task is Task ? task.status == TaskStatus.pending :
+    task is MaintenanceTask ? task.status == MaintenanceTaskStatus.pending : false
+    ).toList();
+
+    if (pendingTasks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Keine ausstehenden Aufgaben vorhanden'),
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Aufgabe starten'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: pendingTasks.length > 5 ? 5 : pendingTasks.length,
+            itemBuilder: (context, index) {
+              final task = pendingTasks[index];
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: task is Task ? Colors.blue.shade50 : Colors.orange.shade50,
+                  child: Icon(
+                    task is Task ? Icons.assignment : Icons.build,
+                    color: task is Task ? Colors.blue : Colors.orange,
+                    size: 20,
+                  ),
+                ),
+                title: Text(task is Task ? task.title : task.title),
+                subtitle: Text(
+                  'Fällig: ${_formatDate(task is Task ? task.deadline : task.nextDue)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: (task is Task && task.deadline.isBefore(DateTime.now())) ||
+                        (task is MaintenanceTask && task.nextDue.isBefore(DateTime.now()))
+                        ? Colors.red
+                        : Colors.grey,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _startTask(task);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/tasks/planner');
+            },
+            child: const Text('Alle Aufgaben anzeigen'),
+          ),
+        ],
       ),
     );
   }

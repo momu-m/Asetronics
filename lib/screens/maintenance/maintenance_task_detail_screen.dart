@@ -149,6 +149,7 @@ class MaintenanceTaskDetailScreen extends StatelessWidget {
       MaintenanceTaskStatus.inProgress => 'In Bearbeitung',
       MaintenanceTaskStatus.completed => 'Abgeschlossen',
       MaintenanceTaskStatus.overdue => 'Überfällig',
+      MaintenanceTaskStatus.deleted => 'Gelöscht',
     };
   }
 

@@ -1,4 +1,5 @@
 // user_role.dart
+import 'package:flutter/foundation.dart';
 
 // Definition der verfügbaren Benutzerrollen
 enum UserRole {
@@ -117,12 +118,16 @@ class UserPermissions {
 
   // Rollenbezeichnung auf Deutsch
   static String getRoleDisplayName(UserRole role) {
-    return switch (role) {
-      UserRole.admin => 'Administrator',
-      UserRole.teamlead => 'Teamleiter',
-      UserRole.technician => 'Techniker',
-      UserRole.operator => 'Bediener'
-    };
+    switch (role) {
+      case UserRole.admin:
+        return 'Administrator';
+      case UserRole.teamlead:
+        return 'Teamleiter';
+      case UserRole.technician:
+        return 'Techniker';
+      case UserRole.operator:
+        return 'Bediener';
+    }
   }
 
   // Beschreibung der Rolle
@@ -141,45 +146,135 @@ class UserPermissions {
 // user_role.dart
 
 class User {
-  final String id;           // varchar(36)
-  final String username;     // varchar(50)
-  final String password;     // varchar(255)
-  final UserRole role;       // varchar(50) - wird als enum gespeichert
-  final bool isActive;       // tinyint(1)
+  final String id;
+  final String username;
+  final String password;
+  final UserRole role;
+  final bool isActive;
 
-  User({
+  // Neue Attribute für den Profilbereich
+  final String? fullName;         // Vollständiger Name
+  final String? email;            // E-Mail-Adresse
+  final String? phone;            // Telefonnummer
+  final String? department;       // Abteilung
+  final String? profileImageUrl;  // URL zum Profilbild
+  final String? profileImageBase64; // Base64-kodiertes Profilbild (für Offline)
+  final DateTime? lastLogin;      // Letzter Login-Zeitpunkt
+  final Map<String, dynamic>? preferences; // Benutzerpräferenzen
+
+  const User({
     required this.id,
     required this.username,
     required this.password,
     required this.role,
-    this.isActive = true,    // Standardwert ist 1 (true) wie in der Datenbank
+    this.isActive = true,
+    this.fullName,
+    this.email,
+    this.phone,
+    this.department,
+    this.profileImageUrl,
+    this.profileImageBase64,
+    this.lastLogin,
+    this.preferences,
   });
 
-  // Konvertiert JSON/Datenbank-Daten in ein User-Objekt
-  factory User.fromJson(Map<String, dynamic> json) {
+  User copyWith({
+    String? id,
+    String? username,
+    String? password,
+    UserRole? role,
+    bool? isActive,
+    String? fullName,
+    String? email,
+    String? phone,
+    String? department,
+    String? profileImageUrl,
+    String? profileImageBase64,
+    DateTime? lastLogin,
+    Map<String, dynamic>? preferences,
+  }) {
     return User(
-      id: json['id'] as String,  // Hier könnte der Fehler liegen
-      username: json['username'] as String,
-      password: json['password'] ?? '',  // password könnte fehlen
-      role: _parseRole(json['role'] as String),
-      isActive: json['is_active'] == 1,
+      id: id ?? this.id,
+      username: username ?? this.username,
+      password: password ?? this.password,
+      role: role ?? this.role,
+      isActive: isActive ?? this.isActive,
+      fullName: fullName ?? this.fullName,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      department: department ?? this.department,
+      profileImageUrl: profileImageUrl ?? this.profileImageUrl,
+      profileImageBase64: profileImageBase64 ?? this.profileImageBase64,
+      lastLogin: lastLogin ?? this.lastLogin,
+      preferences: preferences ?? this.preferences,
     );
   }
 
-  // Konvertiert User-Objekt zurück in JSON/Datenbank-Format
-  // In user_role.dart - Methode toJson() anpassen
+  // Konvertiert den Benutzer von JSON
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: json['id'].toString(),
+      username: json['username'] as String,
+      password: json['password'] as String? ?? '',
+      role: _parseRole(json['role']),
+      isActive: json['is_active'] == 1 || json['is_active'] == true,
+      fullName: json['full_name'] as String?,
+      email: json['email'] as String?,
+      phone: json['phone'] as String?,
+      department: json['department'] as String?,
+      profileImageUrl: json['profile_image_url'] as String?,
+      profileImageBase64: json['profile_image_base64'] as String?,
+      lastLogin: json['last_login'] != null
+          ? DateTime.parse(json['last_login'])
+          : null,
+      preferences: json['preferences'] != null
+          ? Map<String, dynamic>.from(json['preferences'])
+          : null,
+    );
+  }
+
+  // Konvertiert den Benutzer zu JSON
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'username': username,
       'password': password,
-      'role': role.toDatabaseValue(), // Verwende die vordefinierte Methode
+      'role': role.toString().split('.').last,
       'is_active': isActive ? 1 : 0,
+      'full_name': fullName,
+      'email': email,
+      'phone': phone,
+      'department': department,
+      'profile_image_url': profileImageUrl,
+      'profile_image_base64': profileImageBase64,
+      'last_login': lastLogin?.toIso8601String(),
+      'preferences': preferences,
     };
   }
-  // Hilfsmethode zum Konvertieren des role-Strings in UserRole enum
-  static UserRole _parseRole(String roleStr) {
-    switch (roleStr.toLowerCase()) {
+
+
+  // Prüft, ob der Benutzer eine bestimmte Berechtigung hat
+  bool hasPermission(String permission) {
+    switch (permission) {
+      case 'create_error_reports':
+        return true; // Alle Benutzer können Fehler melden
+      case 'view_all_reports':
+        return role == UserRole.admin || role == UserRole.teamlead;
+      case 'manage_maintenance':
+        return role == UserRole.admin || role == UserRole.teamlead;
+      case 'manage_users':
+        return role == UserRole.admin;
+      default:
+        return false;
+    }
+  }
+
+  // Hilfsmethode zum Parsen der Rolle
+  static UserRole _parseRole(dynamic roleValue) {
+    if (roleValue is UserRole) return roleValue;
+
+    final roleStr = roleValue.toString().toLowerCase();
+    switch (roleStr) {
       case 'admin':
         return UserRole.admin;
       case 'teamlead':
@@ -192,10 +287,8 @@ class User {
     }
   }
 
-  // Methode zur Berechtigungsprüfung
-  bool hasPermission(String action) {
-    return UserPermissions.hasPermission(role, action);
-  }
+
+
 
   // Getter für alle Berechtigungen der Rolle
   List<String> get permissions => UserPermissions.getPermissionsForRole(role);

@@ -3,6 +3,9 @@
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import '../config/api_config.dart';
+import '../models/user_role.dart';
+import '../services/email_notification_service.dart';
+import '../services/user_service.dart';
 
 class ErrorReportService extends ChangeNotifier {
   // Singleton-Pattern
@@ -31,7 +34,8 @@ class ErrorReportService extends ChangeNotifier {
         return true;
       }
 
-      _logError('Server-Fehler', 'Status: ${response.statusCode}, Body: ${response.body}');
+      _logError('Server-Fehler',
+          'Status: ${response.statusCode}, Body: ${response.body}');
       return false;
     } catch (e) {
       _logError('Fehler beim Speichern', e);
@@ -48,7 +52,8 @@ class ErrorReportService extends ChangeNotifier {
       );
 
       if (response.statusCode == 200) {
-        _cachedReports = List<Map<String, dynamic>>.from(jsonDecode(response.body));
+        _cachedReports =
+            List<Map<String, dynamic>>.from(jsonDecode(response.body));
         return _cachedReports;
       }
 
@@ -70,11 +75,56 @@ class ErrorReportService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         // Cache aktualisieren
-        final index = _cachedReports.indexWhere((report) => report['id'] == errorId);
+        final index =
+            _cachedReports.indexWhere((report) => report['id'] == errorId);
         if (index != -1) {
           _cachedReports[index]['status'] = newStatus;
           notifyListeners();
         }
+
+        // E-Mail-Benachrichtigungen für Statusänderungen senden
+        try {
+          final emailService = EmailNotificationService();
+          final userService = UserService();
+
+          // Finde den Ersteller der Fehlermeldung und Techniker/Admin
+          List<String> notifyUserIds = [];
+
+          // Füge den Ersteller der Fehlermeldung hinzu
+          final error = _cachedReports.firstWhere(
+                  (report) => report['id'] == errorId,
+              orElse: () => {'id': errorId}
+          );
+              if (error != null && error['createdBy'] != null) {
+            notifyUserIds.add(error['createdBy']);
+          }
+
+          // Füge Benutzer mit relevanten Rollen hinzu (Techniker, Teamleader, Admins)
+          final allUsers = await userService.getUsers();
+          for (var userData in allUsers) {
+            final user = User.fromJson(userData);
+            if (user.role == UserRole.admin ||
+                user.role == UserRole.teamlead ||
+                user.role == UserRole.technician) {
+              if (!notifyUserIds.contains(user.id)) {
+                notifyUserIds.add(user.id);
+              }
+            }
+          }
+
+          if (notifyUserIds.isNotEmpty) {
+            await emailService.sendErrorStatusNotification(
+                errorId, notifyUserIds);
+            _logDebug(
+                'E-Mail-Benachrichtigungen für Statusänderung der Fehlermeldung $errorId gesendet');
+          }
+        } catch (e) {
+          _logError(
+              'Fehler beim Senden der E-Mail-Benachrichtigungen für Statusänderung',
+              e);
+          // Hauptprozess nicht unterbrechen
+        }
+
         return true;
       }
 

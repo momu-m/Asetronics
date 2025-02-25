@@ -1,10 +1,15 @@
 // lib/services/maintenance_schedule_service.dart
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import '../main.dart';
 import '../models/maintenance_schedule.dart';
 import '../models/user_role.dart';
 import 'dart:convert';
 import '../config/api_config.dart';
+import '../services/email_notification_service.dart';
+import '../services/user_service.dart';
 
 class MaintenanceScheduleService extends ChangeNotifier {
   // Singleton-Pattern
@@ -19,6 +24,11 @@ class MaintenanceScheduleService extends ChangeNotifier {
   Future<void> initialize() async {
     try {
       await loadTasks();
+      await sendMaintenanceReminders();
+
+      Timer.periodic(const Duration(hours: 12), (_) async {
+        await sendMaintenanceReminders();
+      });
       print('MaintenanceScheduleService erfolgreich initialisiert');
     } catch (e) {
       print('Fehler bei MaintenanceScheduleService Initialisierung: $e');
@@ -29,6 +39,7 @@ class MaintenanceScheduleService extends ChangeNotifier {
   final Map<String, User> _technicianCache = {};
 
   // Lädt alle Wartungsaufgaben
+  // Lädt alle Wartungsaufgaben
   Future<void> loadTasks() async {
     try {
       final response = await ApiConfig.sendRequest(
@@ -38,7 +49,12 @@ class MaintenanceScheduleService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
-        _tasks = data.map((json) => MaintenanceTask.fromJson(json)).toList();
+
+        // Filter: Ignoriere Aufgaben mit Status "deleted"
+        _tasks = data
+            .map((json) => MaintenanceTask.fromJson(json))
+            .where((task) => task.status.toString().toLowerCase() != 'deleted')
+            .toList();
 
         // Sortiere nach Priorität und Datum
         _tasks.sort((a, b) {
@@ -92,16 +108,17 @@ class MaintenanceScheduleService extends ChangeNotifier {
   }
 
   // Neue Task erstellen mit verbesserter Validierung
+  // In maintenance_schedule_service.dart, die addTask und updateTask Methoden anpassen
+
+// Neue Task erstellen mit verbesserter Validierung
   Future<bool> addTask(MaintenanceTask task) async {
     try {
-      if (!isMachineActive(task.machineId)) {
-        throw Exception('Die ausgewählte Maschine ist nicht aktiv');
-      }
-
+      // Stelle sicher, dass die Task korrekte Werte für line und machineType hat
+      final taskData = task.toJson();
       final response = await ApiConfig.sendRequest(
         url: '${ApiConfig.baseUrl}/maintenance/tasks',
         method: 'POST',
-        body: jsonEncode(task.toJson()),
+        body: jsonEncode(taskData),
       );
 
       if (response.statusCode == 201) {
@@ -115,11 +132,10 @@ class MaintenanceScheduleService extends ChangeNotifier {
     }
   }
 
-
-
-  // Aktualisiert eine bestehende Wartungsaufgabe
+// Aktualisiert eine bestehende Wartungsaufgabe
   Future<bool> updateTask(MaintenanceTask task) async {
     try {
+      // Stelle sicher, dass die Task korrekte Werte für line und machineType hat
       final response = await ApiConfig.sendRequest(
         url: '${ApiConfig.maintenanceUrl}/tasks/${task.id}',
         method: 'PUT',
@@ -161,6 +177,52 @@ class MaintenanceScheduleService extends ChangeNotifier {
     }
   }
 
+
+// Löscht eine Aufgabe permanent (nur für Admins)
+  Future<bool> permanentlyDeleteTask(String taskId) async {
+    try {
+      // Hole aktuellen Benutzer für Rollenprüfung
+      final currentUser = userService.currentUser;
+      if (currentUser?.role != UserRole.admin) {
+        throw Exception('Nur Administratoren können Aufgaben permanent löschen');
+      }
+
+      // Statt zu löschen, aktualisiere die Aufgabe mit einem "gelöscht"-Status
+      final response = await ApiConfig.sendRequest(
+        url: '${ApiConfig.maintenanceUrl}/tasks/$taskId',
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'status': 'deleted',
+          'modified_by': currentUser!.id
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        // Entferne die Aufgabe aus dem lokalen Cache
+        _tasks.removeWhere((task) => task.id == taskId);
+        notifyListeners();
+
+        // Aktualisiere die Aufgabenliste
+        await loadTasks();
+        return true;
+      } else if (response.statusCode == 404) {
+        // Wenn die Aufgabe nicht gefunden wurde, entferne sie trotzdem aus dem lokalen Cache
+        _tasks.removeWhere((task) => task.id == taskId);
+        notifyListeners();
+        print('Aufgabe nicht auf dem Server gefunden, aber aus dem lokalen Cache entfernt');
+        return true;
+      } else {
+        throw Exception('Server-Fehler: ${response.statusCode}');
+      }
+    } catch (e) {
+      _logError('Fehler beim permanenten Löschen der Aufgabe', e);
+      rethrow;
+    }
+  }
   // Lädt verfügbare Techniker
   Future<List<User>> getAvailableTechnicians() async {
     try {
@@ -218,6 +280,60 @@ class MaintenanceScheduleService extends ChangeNotifier {
         return DateTime(fromDate.year, fromDate.month + 3, fromDate.day);
       case MaintenanceInterval.yearly:
         return DateTime(fromDate.year + 1, fromDate.month, fromDate.day);
+    }
+  }
+
+  /// Sendet E-Mail-Erinnerungen für anstehende Wartungsaufgaben
+  Future<void> sendMaintenanceReminders() async {
+    try {
+      // Finde Aufgaben, die bald fällig sind (innerhalb der nächsten 48 Stunden)
+      final now = DateTime.now();
+      final in48Hours = now.add(const Duration(hours: 48));
+      
+      final upcomingTasks = _tasks.where((task) {
+        return task.status == MaintenanceTaskStatus.pending && 
+               task.nextDue.isAfter(now) && 
+               task.nextDue.isBefore(in48Hours);
+      }).toList();
+      
+      if (upcomingTasks.isEmpty) {
+        return;
+      }
+      
+      final emailService = EmailNotificationService();
+      final userService = UserService();
+      
+      // Finde Benutzer mit relevanten Rollen (Techniker, Teamleader, Admins)
+      List<String> technicianIds = [];
+      
+      final allUsers = await userService.getUsers();
+      for (var userData in allUsers) {
+        final user = User.fromJson(userData);
+        if (user.role == UserRole.admin || 
+            user.role == UserRole.teamlead || 
+            user.role == UserRole.technician) {
+          technicianIds.add(user.id);
+        }
+      }
+      
+      if (technicianIds.isEmpty) {
+        return;
+      }
+      
+      // Sende Erinnerungen für jede anstehende Aufgabe
+      for (var task in upcomingTasks) {
+        try {
+          await emailService.sendMaintenanceReminder(task.id, technicianIds);
+          print('Wartungserinnerung für Aufgabe ${task.id} gesendet');
+          
+          // Warte kurz zwischen den E-Mails, um Server nicht zu überlasten
+          await Future.delayed(const Duration(seconds: 1));
+        } catch (e) {
+          print('Fehler beim Senden der Wartungserinnerung für Aufgabe ${task.id}: $e');
+        }
+      }
+    } catch (e) {
+      print('Fehler beim Senden von Wartungserinnerungen: $e');
     }
   }
 

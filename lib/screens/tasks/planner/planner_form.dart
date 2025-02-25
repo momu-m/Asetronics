@@ -1,15 +1,12 @@
 // planner_form.dart
 import 'package:flutter/material.dart';
-import '../../../config/api_config.dart';
-import '../../../models/maintenance_schedule.dart';
-import '../../../models/task_model.dart';
-import '../../../models/user_role.dart';
-import '../../../main.dart' show userService, maintenanceScheduleService;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-
-
-
+import '../../../models/maintenance_schedule.dart';
+import '../../../models/user_role.dart';
+import '../../../config/api_config.dart';
+import '../../../main.dart' show userService, maintenanceScheduleService;
+import '../../../utils/machine_constants.dart';
 
 class PlannerFormScreen extends StatefulWidget {
   final MaintenanceTask? existingTask;
@@ -35,14 +32,42 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
   bool _isLoading = false;
   String? _selectedTechnician;
   String? _selectedMachineId;
-  List<Map<String, dynamic>> _machines = [];
   List<User> _technicians = [];
   MaintenanceInterval _selectedInterval = MaintenanceInterval.monthly;
   DateTime _nextDueDate = DateTime.now().add(const Duration(days: 1));
   int _estimatedHours = 1;
   int _estimatedMinutes = 0;
   bool _isUrgent = false;
-  TaskPriority _priority = TaskPriority.normal;
+  MaintenancePriority _priority = MaintenancePriority.medium;
+
+  // Neue Variablen für die Maschinenauswahl
+  String? _selectedMachineLine;
+  String? _selectedMachineType;
+
+  // Getter für verfügbare Maschinentypen basierend auf der ausgewählten Linie
+  List<String> get _machineTypes {
+    if (_selectedMachineLine == null) {
+      return [];
+    }
+
+    if (_selectedMachineLine == ProductionLines.xLine) {
+      return [
+        ...MachineCategories.placerTypes,
+        ...MachineCategories.printerTypes
+      ];
+    } else if (_selectedMachineLine == ProductionLines.dLine) {
+      return [
+        ...MachineCategories.placerTypes,
+        ...MachineCategories.ovenTypes
+      ];
+    }
+    return [
+      ...MachineCategories.placerTypes,
+      ...MachineCategories.printerTypes,
+      ...MachineCategories.ovenTypes,
+      ...MachineCategories.inspectionTypes,
+    ];
+  }
 
   @override
   void initState() {
@@ -54,61 +79,22 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     try {
-      // Lade Maschinen
-      await _loadMachines();
       // Lade Techniker
       await _loadTechnicians();
 
       // Wenn existierende Aufgabe, lade deren Daten
       if (widget.existingTask != null) {
         _initializeExistingTask();
+      } else {
+        // Standardwerte setzen
+        setState(() {
+          _selectedMachineLine = ProductionLines.xLine;
+        });
       }
     } catch (e) {
       print('Fehler beim Laden der Daten: $e');
     } finally {
       setState(() => _isLoading = false);
-    }
-  }
-
-  // Lädt die Maschinenliste
-  Future<void> _loadMachines() async {
-    try {
-      setState(() => _isLoading = true);
-
-      final response = await ApiConfig.sendRequest(
-        url: ApiConfig.machinesUrl,
-        method: 'GET',
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        setState(() {
-          _machines = List<Map<String, dynamic>>.from(
-              data.where((m) => m['status'] == 'active')
-          );
-          _isLoading = false;
-        });
-        print('Maschinen erfolgreich geladen: ${_machines.length} aktive Maschinen');
-      } else {
-        throw Exception('Fehler beim Laden der Maschinen: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Fehler beim Laden der Maschinen: $e');
-      setState(() {
-        _isLoading = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Laden der Maschinen: $e'),
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: 'Wiederholen',
-              onPressed: _loadMachines,
-            ),
-          ),
-        );
-      }
     }
   }
 
@@ -137,10 +123,7 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
       print('Fehler beim Laden der Techniker: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Laden der Techniker: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Fehler beim Laden der Techniker: $e')),
         );
       }
     } finally {
@@ -160,9 +143,49 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
       _selectedTechnician = task.assignedTo;
       _selectedInterval = task.interval;
       _nextDueDate = task.nextDue;
+      _priority = task.priority;
+      _isUrgent = task.priority == MaintenancePriority.urgent;
       _estimatedHours = task.estimatedDuration.inHours;
       _estimatedMinutes = task.estimatedDuration.inMinutes % 60;
+
+      // Setze zuerst die Produktionslinie
+      _selectedMachineLine = task.line;
+      if (_selectedMachineLine == null || !ProductionLines.getAllLines().contains(_selectedMachineLine)) {
+        // Fallback: Setze die erste verfügbare Linie
+        _selectedMachineLine = ProductionLines.xLine;
+        print('Warnung: Für task ${task.id} wurde keine gültige Linie gefunden, verwende Fallback');
+      }
     });
+
+    // Dann setze den Maschinentyp, aber erst nachdem setState aufgerufen wurde,
+    // damit _machineTypes korrekt aktualisiert wird
+    Future.microtask(() {
+      setState(() {
+        if (task.machineType != null && _machineTypes.contains(task.machineType)) {
+          _selectedMachineType = task.machineType;
+        } else {
+          // Versuche den Typ aus der ID zu extrahieren
+          _extractMachineTypeFromId(task.machineId);
+
+          // Wenn immer noch kein Typ gefunden wurde, verwende den ersten verfügbaren
+          if (_selectedMachineType == null && _machineTypes.isNotEmpty) {
+            _selectedMachineType = _machineTypes.first;
+            print('Warnung: Für task ${task.id} wurde kein gültiger Maschinentyp gefunden, verwende Fallback');
+          }
+        }
+      });
+    });
+  }
+
+  // Hilfsmethode um Maschinentyp aus der ID zu extrahieren
+  void _extractMachineTypeFromId(String machineId) {
+    // Prüfe alle möglichen Maschinentypen
+    for (final type in _machineTypes) {
+      if (machineId.toLowerCase().contains(type.toLowerCase())) {
+        _selectedMachineType = type;
+        return;
+      }
+    }
   }
 
   @override
@@ -184,13 +207,70 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
               const SizedBox(height: 16),
               _buildDescriptionField(),
               const SizedBox(height: 16),
-              _buildMachineDropdown(),
+
+              // Produktionslinie Auswahl
+              DropdownButtonFormField<String>(
+                value: _selectedMachineLine,
+                decoration: const InputDecoration(
+                  labelText: 'Produktionslinie',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.linear_scale),
+                ),
+                items: ProductionLines.getAllLines().map((line) {
+                  return DropdownMenuItem<String>(
+                    value: line,
+                    child: Text(line),
+                  );
+                }).toList(),
+                validator: (value) {
+                  if (value == null) {
+                    return 'Bitte wählen Sie eine Produktionslinie';
+                  }
+                  return null;
+                },
+                onChanged: (value) {
+                  setState(() {
+                    _selectedMachineLine = value;
+                    // Maschinentyp zurücksetzen, weil sich die Liste ändern könnte
+                    _selectedMachineType = null;
+                  });
+                },
+              ),
               const SizedBox(height: 16),
-              _buildTechnicianDropdown(),
-              const SizedBox(height: 16),
+
+              // Maschinentyp Auswahl (basierend auf der Linie)
+              if (_selectedMachineLine != null) ... [
+                DropdownButtonFormField<String>(
+                  value: _selectedMachineType,
+                  decoration: const InputDecoration(
+                    labelText: 'Maschinentyp',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.precision_manufacturing),
+                  ),
+                  items: _machineTypes.map((type) {
+                    return DropdownMenuItem<String>(
+                      value: type,
+                      child: Text(type),
+                    );
+                  }).toList(),
+                  validator: (value) {
+                    if (value == null) {
+                      return 'Bitte wählen Sie einen Maschinentyp';
+                    }
+                    return null;
+                  },
+                  onChanged: (value) {
+                    setState(() => _selectedMachineType = value);
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+
               _buildIntervalDropdown(),
               const SizedBox(height: 16),
               _buildDurationFields(),
+              const SizedBox(height: 16),
+              _buildTechnicianDropdown(),
               const SizedBox(height: 16),
               _buildDatePicker(),
               const SizedBox(height: 16),
@@ -237,31 +317,6 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
           return 'Bitte geben Sie eine Beschreibung ein';
         }
         return null;
-      },
-    );
-  }
-
-  // Widget für die Maschinenauswahl
-  Widget _buildMachineDropdown() {
-    return DropdownButtonFormField<String>(
-      value: _selectedMachineId,
-      decoration: const InputDecoration(
-        labelText: 'Maschine',
-        border: OutlineInputBorder(),
-        prefixIcon: Icon(Icons.precision_manufacturing),
-      ),
-      items: _machines.map((machine) {
-        return DropdownMenuItem(
-          value: machine['id'].toString(),
-          child: Text('${machine['name']} (${machine['type']})'),
-        );
-      }).toList(),
-      validator: (value) {
-        if (value == null) return 'Bitte wählen Sie eine Maschine';
-        return null;
-      },
-      onChanged: (value) {
-        setState(() => _selectedMachineId = value);
       },
     );
   }
@@ -328,6 +383,7 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
       ),
     );
   }
+
   // Widget für die Intervallauswahl
   Widget _buildIntervalDropdown() {
     return DropdownButtonFormField<MaintenanceInterval>(
@@ -350,29 +406,6 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
       },
     );
   }
-  Widget _buildPriorityDropdown() {
-    return DropdownButtonFormField<TaskPriority>(
-      value: _priority,
-      decoration: const InputDecoration(
-        labelText: 'Priorität',
-        border: OutlineInputBorder(),
-        prefixIcon: Icon(Icons.flag),
-      ),
-      items: TaskPriority.values.map((priority) {
-        return DropdownMenuItem(
-          value: priority,
-          child: Text(_getPriorityText(priority)),
-        );
-      }).toList(),
-      onChanged: (value) {
-        if (value != null) {
-          setState(() => _priority = value);
-        }
-      },
-    );
-  }
-
-
 
   // Widget für die Dauerauswahl
   Widget _buildDurationFields() {
@@ -454,8 +487,7 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
       onChanged: (value) {
         setState(() => _isUrgent = value);
       },
-        secondary: Icon(Icons.priority_high),
-
+      secondary: const Icon(Icons.priority_high),
     );
   }
 
@@ -492,84 +524,113 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
     };
   }
 
-  // Hilfsmethode für die Prioritäts-Texte
-  String _getPriorityText(TaskPriority priority) {
-    return switch (priority) {
-      TaskPriority.low => 'Niedrig',
-      TaskPriority.normal => 'Normal',
-      TaskPriority.high => 'Hoch',
-      TaskPriority.urgent => 'Dringend',
-      // TODO: Handle this case.
-      TaskPriority.medium => throw UnimplementedError(),
-    };
-  }
-
   // Speichern der Aufgabe
-// In _saveTask Methode von planner_form.dart
+  // Änderungen in planner_form.dart
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Zusätzliche Validierung für Maschinenauswahl
+    if (_selectedMachineLine == null) {
+      _showError('Bitte wählen Sie eine Produktionslinie aus');
+      return;
+    }
+    if (_selectedMachineType == null) {
+      _showError('Bitte wählen Sie einen Maschinentyp aus');
+      return;
+    }
+
+    // Validiere Technikerauswahl
+    if (_selectedTechnician == null) {
+      _showError('Bitte wählen Sie einen Techniker aus');
+      return;
+    }
 
     setState(() => _isLoading = true);
 
     try {
+      // Generiere eine eindeutige Maschinen-ID aus den ausgewählten Werten
+      // mit einem Zeitstempel für Eindeutigkeit
+      final String machineId = widget.existingTask?.machineId ??
+          'machine-${_selectedMachineLine?.replaceAll(' ', '-')}-${_selectedMachineType?.replaceAll(' ', '-')}-${DateTime.now().millisecondsSinceEpoch}';
+
       // Debug-Ausgabe
       print('Speichere Task mit folgenden Daten:');
+
+      // Eindeutige Task-ID für neue Aufgaben sicherstellen
+      final taskId = widget.existingTask?.id ?? 'task-${DateTime.now().millisecondsSinceEpoch}';
+
       final taskData = {
-        "id": DateTime.now().millisecondsSinceEpoch.toString(),
+        "id": taskId,
         "title": _titleController.text.trim(),
         "description": _descriptionController.text.trim(),
-        "machine_id": _selectedMachineId,
+        "machine_id": machineId,
         "assigned_to": _selectedTechnician,
         "due_date": _nextDueDate.toIso8601String(),
-        "status": "pending",
-        "priority": _priority.toString().split('.').last.toLowerCase(),
+        "status": widget.existingTask?.status.toString().split('.').last.toLowerCase() ?? "pending",
+        "priority": _isUrgent ? "urgent" : "medium", // Vereinfachte Priorität
         "maintenance_int": _selectedInterval.toString().split('.').last.toLowerCase(),
         "estimated_duration": (_estimatedHours * 60) + _estimatedMinutes,
-        "created_at": DateTime.now().toIso8601String()
+        "created_at": DateTime.now().toIso8601String(),
+        "machine_line": _selectedMachineLine,
+        "machine_type": _selectedMachineType
       };
 
       print('Task Daten: $taskData');
 
-      // API-Aufruf mit korrektem Endpoint
-      final response = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/maintenance/tasks'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+      // Verwende korrekte URL basierend auf neuer oder bestehender Aufgabe
+      final String url = widget.existingTask != null
+          ? '${ApiConfig.baseUrl}/maintenance/tasks/${widget.existingTask!.id}'
+          : '${ApiConfig.baseUrl}/maintenance/tasks';
+
+      // Verwende korrekte HTTP-Methode
+      final String method = widget.existingTask != null ? 'PUT' : 'POST';
+
+      // API-Aufruf
+      final response = await ApiConfig.sendRequest(
+        url: url,
+        method: method,
         body: jsonEncode(taskData),
       );
 
       print('Server Antwort Status: ${response.statusCode}');
       print('Server Antwort Body: ${response.body}');
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 201 || response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Aufgabe erfolgreich erstellt'),
+            SnackBar(
+              content: Text(widget.existingTask != null
+                  ? 'Aufgabe erfolgreich aktualisiert'
+                  : 'Aufgabe erfolgreich erstellt'),
               backgroundColor: Colors.green,
             ),
           );
           Navigator.pop(context, true);
         }
       } else {
-        throw Exception('Server Error: ${response.statusCode}');
+        final Map<String, dynamic> errorData =
+        jsonDecode(response.body);
+        throw Exception('Server Error: ${response.statusCode}\n${errorData['error'] ?? 'Unbekannter Fehler'}');
       }
     } catch (e) {
       print('Fehler beim Speichern: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showError('Fehler: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  // Hilfsmethode zum Anzeigen von Fehlern
+  void _showError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 

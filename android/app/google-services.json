@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "472241969587",
+    "project_id": "asetronics-ag-app",
+    "storage_bucket": "asetronics-ag-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:472241969587:android:9c952844c432773abb53c6",
+        "android_client_info": {
+          "package_name": "com.asetronics.maintenance_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDev4HzDHuY-GIMsOqSOjnHd0_cT86ZJb4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:472241969587:android:cbd936e598d29784bb53c6",
+        "android_client_info": {
+          "package_name": "com.example.asetronics_ag_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDev4HzDHuY-GIMsOqSOjnHd0_cT86ZJb4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

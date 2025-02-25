@@ -1,16 +1,19 @@
 // main.dart
 
 // Import-Sektion
+import 'package:asetronics_ag_app/screens/profile/profile_setup_screen.dart';
 import "package:asetronics_ag_app/screens/tasks/personal/improved_task_service.dart";
 import 'package:asetronics_ag_app/screens/tasks/planner/planner_form.dart';
 import 'package:asetronics_ag_app/screens/tasks/planner/planner_screen.dart';
 
 import 'models/maintenance_schedule.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import für .env
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
+import 'screens/profile/profile_screen.dart';
 import 'services/error_report_service.dart';
+import 'services/email_notification_service.dart';
+import 'screens/settings/email_notification_settings.dart';
 
 // Screen-Imports
 import 'screens/problem/problem_database_screen.dart';
@@ -34,6 +37,7 @@ import 'screens/machine/qr_scanner_screen.dart';
 import 'screens/settings/settings_screen.dart';
 import 'screens/tasks/planner/planner_screen.dart';
 import 'screens/tasks/personal/task_screen.dart';
+import 'screens/tasks/personal/task_feedback_screen.dart';
 
 // Service-Imports
 import 'services/mysql_service.dart';
@@ -48,6 +52,7 @@ import 'services/theme_service.dart';
 import 'services/manual_service.dart';
 import 'services/ai_service.dart';
 import 'services/task_assignment_service.dart';
+import 'services/email_notification_service.dart';
 
 // Model-Imports
 import 'models/task_model.dart';
@@ -87,6 +92,8 @@ void main() async {
   final appSettings = await settingsService.loadSettings();
   final errorReportService = ErrorReportService();
   final improvedTaskService = ImprovedTaskService();
+  final emailNotificationService = EmailNotificationService();
+
 
   // Führe einen einfachen Verbindungstest zur Datenbank durch
   try {
@@ -116,6 +123,10 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ImprovedTaskService()),
         ChangeNotifierProvider(create: (_) => InAppNotificationService()),
         ChangeNotifierProvider(create: (_) => AIService()),
+        ChangeNotifierProvider(create: (_) => ProblemDatabaseService()),
+        ChangeNotifierProvider(create: (_) => ManualService()),
+        ChangeNotifierProvider(create: (_) => EmailNotificationService()),
+
       ],
       child: MyApp(initialSettings: appSettings),
     ),
@@ -218,10 +229,20 @@ class MyApp extends StatelessWidget {
 
   const MyApp({Key? key, required this.initialSettings}) : super(key: key);
 
+
   @override
   Widget build(BuildContext context) {
     final themeService = context.watch<ThemeService>();
-    final isDarkMode = themeService.currentThemeMode == AppThemeMode.dark;
+
+    // Verwende effizientere Theme-Berechnung mit Cache
+    final themeData = themeService.currentThemeMode == AppThemeMode.system
+        ? (MediaQuery.platformBrightnessOf(context) == Brightness.dark
+        ? themeService.getDarkTheme()
+        : themeService.getLightTheme())
+        : (themeService.currentThemeMode == AppThemeMode.dark
+        ? themeService.getDarkTheme()
+        : themeService.getLightTheme());
+
 
     return MaterialApp(
       title: 'Asetronics Wartungs-App',
@@ -236,33 +257,7 @@ class MyApp extends StatelessWidget {
           child: child!,
         );
       },
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        brightness: isDarkMode ? Brightness.dark : Brightness.light,
-        scaffoldBackgroundColor: isDarkMode ? Colors.grey[900] : Colors.grey[50],
-        appBarTheme: AppBarTheme(
-          backgroundColor: isDarkMode ? Colors.grey[900] : Colors.blue[800],
-          foregroundColor: Colors.white,
-          elevation: isDarkMode ? 0 : 4,
-          centerTitle: true,
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: isDarkMode ? Colors.blue[700] : Colors.blue[800],
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          border: const OutlineInputBorder(),
-          filled: true,
-          fillColor: isDarkMode ? Colors.grey[800] : Colors.white,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-      ),
+      theme: themeData,  // Verwende den berechneten Theme-Wert
       initialRoute: '/',
       routes: {
         '/': (context) => const LoginScreen(),
@@ -282,7 +277,13 @@ class MyApp extends StatelessWidget {
         '/problems': (context) => const ProblemDatabaseScreen(),
         '/manual': (context) => const ManualScreen(),
         '/settings': (context) => const SettingsScreen(),
+        '/profile': (context) => const ProfileScreen(), // Neue Route für Profil
         '/test/mysql': (context) => TestMySQLScreen(),
+        '/profile/setup': (context) => const ProfileSetupScreen(),
+        '/settings/email_notifications': (context) => const EmailNotificationSettingsScreen(),
+        '/tasks/feedback': (context) => TaskFeedbackScreen(
+          task: ModalRoute.of(context)!.settings.arguments,
+        ),
         '/tasks/detail': (context) => TaskDetailScreen(
           task: ModalRoute.of(context)!.settings.arguments as Task,
         ),

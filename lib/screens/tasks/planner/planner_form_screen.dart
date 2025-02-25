@@ -20,9 +20,6 @@ class PlannerFormScreen extends StatefulWidget {
 
 class _PlannerFormScreenState extends State<PlannerFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  String? _selectedMachineLine;
-  String? _selectedMachineType;
-
 
   // Text Controller
   final _titleController = TextEditingController();
@@ -37,12 +34,17 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
   int _estimatedHours = 1;
   int _estimatedMinutes = 0;
   MaintenancePriority _priority = MaintenancePriority.medium;
+  bool _isUrgent = false;
+
+  // Neue Variablen für die Produktionslinie und den Maschinentyp
+  String? _selectedMachineLine;
+  String? _selectedMachineType;
 
   // Listen für Dropdown-Menüs
-  List<Map<String, dynamic>> _machines = [];
   List<Map<String, dynamic>> _technicians = [];
   List<String> get _machineLines => ProductionLines.getAllLines();
 
+  // Getter für Maschinentypen basierend auf der ausgewählten Linie
   List<String> get _machineTypes {
     if (_selectedMachineLine == ProductionLines.xLine) {
       return [
@@ -55,7 +57,6 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
         ...MachineCategories.ovenTypes
       ];
     }
-
     // Fallback: Alle Maschinentypen
     return [
       ...MachineCategories.placerTypes,
@@ -72,18 +73,17 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
   }
 
   Future<void> _loadInitialData() async {
+    setState(() => _isLoading = true);
     try {
-      setState(() => _isLoading = true);
-
-      // Lade Maschinen
-      await _loadMachines();
-
       // Lade Techniker
       await _loadTechnicians();
 
       // Initialisiere existierende Task-Daten falls vorhanden
       if (widget.existingTask != null) {
         _initializeExistingTask();
+      } else {
+        // Standardwert für Produktionslinie falls keine existierende Aufgabe
+        _selectedMachineLine = ProductionLines.xLine;
       }
     } catch (e) {
       print('Fehler beim Laden der Daten: $e');
@@ -102,21 +102,18 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
       );
 
       print('🔧 Response Status: ${response.statusCode}');
-      print('🔧 Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
-        print('🔧 Dekodierte Daten: $data');
+        print('🔧 Geladene Techniker: ${data.length}');
 
         if (mounted) {
           setState(() {
             _technicians = List<Map<String, dynamic>>.from(data);
-            print('🔧 Techniker geladen: ${_technicians.length}');
 
             // Setze den ersten Techniker als Standard, falls vorhanden
             if (_technicians.isNotEmpty && _selectedTechnician == null) {
               _selectedTechnician = _technicians[0]['id'].toString();
-              print('🔧 Erster Techniker ausgewählt: $_selectedTechnician');
             }
           });
         }
@@ -125,7 +122,6 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
       }
     } catch (e) {
       print('❌ Fehler beim Laden der Techniker: $e');
-      // Zeige Fehlermeldung im UI
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -146,76 +142,89 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
     _selectedInterval = task.interval;
     _nextDueDate = task.nextDue;
     _priority = task.priority;
+    _isUrgent = task.priority == MaintenancePriority.urgent;
+
+    // Produktionslinie und Maschinentyp initialisieren
+    _selectedMachineLine = task.line;
+    _selectedMachineType = task.machineType;
+
+    // Falls diese nicht gesetzt sind, versuche sie aus der MachineID zu extrahieren
+    if (_selectedMachineLine == null || _selectedMachineType == null) {
+      _extractMachineInfoFromId(task.machineId);
+    }
+
+    // Schätzung der Stunden und Minuten
+    _estimatedHours = task.estimatedDuration.inHours;
+    _estimatedMinutes = task.estimatedDuration.inMinutes % 60;
   }
 
-  Future<void> _loadMachines() async {
-    try {
-      setState(() => _isLoading = true);
+  // Hilfsmethode zur Extraktion von Linie und Typ aus der MachineID
+  void _extractMachineInfoFromId(String machineId) {
+    if (machineId.contains('-')) {
+      final parts = machineId.split('-');
+      if (parts.length >= 2) {
+        // Suche nach Produktionslinie
+        for (final line in _machineLines) {
+          if (machineId.toLowerCase().contains(line.toLowerCase())) {
+            setState(() => _selectedMachineLine = line);
+            break;
+          }
+        }
 
-      final response = await ApiConfig.sendRequest(
-        url: ApiConfig.machinesUrl,
-        method: 'GET',
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        setState(() {
-          _machines = List<Map<String, dynamic>>.from(
-              data.where((m) => m['status'] == 'active')
-          );
-          _isLoading = false;
-        });
-        print('Maschinen erfolgreich geladen: ${_machines.length} aktive Maschinen');
-      } else {
-        throw Exception('Fehler beim Laden der Maschinen: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Fehler beim Laden der Maschinen: $e');
-      setState(() {
-        _isLoading = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Laden der Maschinen: $e'),
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: 'Wiederholen',
-              onPressed: _loadMachines,
-            ),
-          ),
-        );
+        // Wenn wir eine Linie gefunden haben, suche nach dem Maschinentyp
+        if (_selectedMachineLine != null) {
+          // Verzögert ausführen, damit die _machineTypes-Liste korrekt aktualisiert wird
+          Future.microtask(() {
+            for (final type in _machineTypes) {
+              if (machineId.toLowerCase().contains(type.toLowerCase())) {
+                setState(() => _selectedMachineType = type);
+                break;
+              }
+            }
+          });
+        }
       }
     }
   }
 
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedMachineId == null) {
-      _showError('Bitte wählen Sie eine Maschine aus');
+
+    // Zusätzliche Validierungen
+    if (_selectedMachineLine == null) {
+      _showError('Bitte wählen Sie eine Produktionslinie aus');
+      return;
+    }
+    if (_selectedMachineType == null) {
+      _showError('Bitte wählen Sie einen Maschinentyp aus');
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      // Aufgabendaten entsprechend der tatsächlichen Datenbankstruktur
+      // Generiere eine Maschinen-ID aus den ausgewählten Werten wenn keine vorhanden ist
+      final machineId = _selectedMachineId ??
+          'machine-${_selectedMachineLine}-${_selectedMachineType}-${DateTime.now().millisecondsSinceEpoch}';
+
+      // Aufgabendaten vorbereiten
       final taskData = {
         "id": widget.existingTask?.id ?? 'task-${DateTime.now().millisecondsSinceEpoch}',
         "title": _titleController.text.trim(),
         "description": _descriptionController.text.trim(),
-        'machine_line': _selectedMachineLine,
-        'machine_type': _selectedMachineType,
+        "machine_id": machineId,
+        "machine_line": _selectedMachineLine,
+        "machine_type": _selectedMachineType,
         "assigned_to": _selectedTechnician,
         "due_date": _nextDueDate.toIso8601String(),
         "status": widget.existingTask?.status.toString().split('.').last ?? "pending",
-        "priority": _priority.toString().split('.').last.toLowerCase(),
+        "priority": _isUrgent ? "urgent" : _priority.toString().split('.').last.toLowerCase(),
         "maintenance_int": _selectedInterval.toString().split('.').last.toLowerCase(),
-        "estimated_duration": (_estimatedHours * 60) + _estimatedMinutes,  // ✅ Minuten berechnen
+        "estimated_duration": (_estimatedHours * 60) + _estimatedMinutes,
         "created_at": DateTime.now().toIso8601String()
       };
 
-      print('Sende Aufgabendaten: ${jsonEncode(taskData)}'); // Debug-Log
+      print('Sende Aufgabendaten: ${jsonEncode(taskData)}');
 
       final response = await ApiConfig.sendRequest(
         url: widget.existingTask != null
@@ -225,8 +234,7 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
         body: jsonEncode(taskData),
       );
 
-      print('Server Antwort Status: ${response.statusCode}'); // Debug-Log
-      print('Server Antwort: ${response.body}'); // Debug-Log
+      print('Server Antwort Status: ${response.statusCode}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         if (mounted) {
@@ -242,7 +250,7 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
         throw Exception('Server-Fehler: ${response.statusCode}\n${response.body}');
       }
     } catch (e) {
-      print('Fehler beim Speichern: $e'); // Debug-Log
+      print('Fehler beim Speichern: $e');
       _showError('Fehler beim Speichern: $e');
     } finally {
       if (mounted) {
@@ -281,21 +289,27 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Titel',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.title),
                 ),
-                validator: (value) =>
-                value?.isEmpty == true ? 'Bitte Titel eingeben' : null,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Bitte geben Sie einen Titel ein';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
 
-              // Maschine
+              // Produktionslinie Dropdown
               DropdownButtonFormField<String>(
                 value: _selectedMachineLine,
                 decoration: const InputDecoration(
                   labelText: 'Produktionslinie',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.linear_scale),
                 ),
                 items: _machineLines.map((line) {
-                  return DropdownMenuItem(
+                  return DropdownMenuItem<String>(
                     value: line,
                     child: Text(line),
                   );
@@ -309,19 +323,23 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
                 onChanged: (value) {
                   setState(() {
                     _selectedMachineLine = value;
-                    _selectedMachineType = null; // Zurücksetzen der Maschinentyp-Auswahl
+                    // Zurücksetzen des Maschinentyps, da sich die verfügbaren Typen ändern können
+                    _selectedMachineType = null;
                   });
                 },
               ),
               const SizedBox(height: 16),
+
+              // Maschinentyp Dropdown (abhängig von der ausgewählten Linie)
               DropdownButtonFormField<String>(
                 value: _selectedMachineType,
                 decoration: const InputDecoration(
                   labelText: 'Maschinentyp',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.precision_manufacturing),
                 ),
                 items: _machineTypes.map((type) {
-                  return DropdownMenuItem(
+                  return DropdownMenuItem<String>(
                     value: type,
                     child: Text(type),
                   );
@@ -345,9 +363,15 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Beschreibung',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.description),
+                  alignLabelWithHint: true,
                 ),
-                validator: (value) =>
-                value?.isEmpty == true ? 'Bitte Beschreibung eingeben' : null,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Bitte geben Sie eine Beschreibung ein';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
 
@@ -357,6 +381,7 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Wartungsintervall',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.repeat),
                 ),
                 items: MaintenanceInterval.values.map((interval) {
                   return DropdownMenuItem(
@@ -382,7 +407,14 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Stunden',
                         border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.timer),
                       ),
+                      validator: (value) {
+                        if (value == null || int.tryParse(value) == null) {
+                          return 'Ungültige Eingabe';
+                        }
+                        return null;
+                      },
                       onChanged: (value) {
                         _estimatedHours = int.tryParse(value) ?? 0;
                       },
@@ -396,16 +428,16 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Minuten',
                         border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.timer),
                       ),
-                      onChanged: (value) {
-                        _estimatedMinutes = int.tryParse(value) ?? 0;
-                      },
                       validator: (value) {
-                        final minutes = int.tryParse(value ?? '') ?? 0;
-                        if (minutes >= 60) {
-                          return 'Max. 59 Minuten';
+                        if (value == null || int.tryParse(value) == null || int.parse(value) >= 60) {
+                          return 'Ungültige Eingabe';
                         }
                         return null;
+                      },
+                      onChanged: (value) {
+                        _estimatedMinutes = int.tryParse(value) ?? 0;
                       },
                     ),
                   ),
@@ -414,60 +446,51 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
               const SizedBox(height: 16),
 
               // Zuständiger Techniker
-              if (_technicians.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _selectedTechnician,
-                  decoration: const InputDecoration(
-                    labelText: "Zuständiger Techniker",
-                    border: OutlineInputBorder(),
+              Card(
+                elevation: 1,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Zuständiger Techniker',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      if (_technicians.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          value: _selectedTechnician,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.person),
+                          ),
+                          items: _technicians.map((tech) {
+                            return DropdownMenuItem(
+                              value: tech['id'].toString(),
+                              child: Text(tech['username'] ?? 'Unbekannt'),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() => _selectedTechnician = value);
+                          },
+                          validator: (value) =>
+                          value == null ? 'Bitte wählen Sie einen Techniker' : null,
+                        )
+                      else
+                        const Text(
+                          'Keine Techniker verfügbar',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                    ],
                   ),
-                  items: _technicians.map((tech) {
-                    return DropdownMenuItem(
-                      value: tech['id'].toString(),
-                      child: Text(tech['username'] ?? 'Unbekannt'),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() => _selectedTechnician = value);
-                  },
-                  validator: (value) =>
-                  value == null ? 'Bitte wählen Sie einen Techniker' : null,
                 ),
-              ] else ...[
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text(
-                    'Keine Techniker verfügbar',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                ),
-              ],
-
-              // Priorität
-              DropdownButtonFormField<MaintenancePriority>(
-                value: _priority,
-                decoration: const InputDecoration(
-                  labelText: 'Priorität',
-                  border: OutlineInputBorder(),
-                ),
-                items: MaintenancePriority.values.map((priority) {
-                  return DropdownMenuItem(
-                    value: priority,
-                    child: Text(_getPriorityText(priority)),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _priority = value);
-                  }
-                },
               ),
               const SizedBox(height: 16),
 
               // Fälligkeitsdatum
               ListTile(
-                title: const Text('Fälligkeitsdatum'),
+                title: const Text('Fällig am'),
                 subtitle: Text(_formatDate(_nextDueDate)),
                 trailing: TextButton(
                   onPressed: () async {
@@ -484,15 +507,30 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
                   child: const Text('Ändern'),
                 ),
               ),
+              const SizedBox(height: 16),
+
+              // Dringend-Switch
+              SwitchListTile(
+                title: const Text('Dringend'),
+                subtitle: const Text('Als dringende Aufgabe markieren'),
+                value: _isUrgent,
+                onChanged: (value) {
+                  setState(() => _isUrgent = value);
+                },
+                secondary: const Icon(Icons.priority_high),
+              ),
               const SizedBox(height: 24),
 
               // Speichern Button
-              ElevatedButton(
-                onPressed: _isLoading ? null : _saveTask,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    _isLoading ? 'Wird gespeichert...' : 'Aufgabe speichern',
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _saveTask,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : Text(
+                    widget.existingTask != null ? 'Aufgabe aktualisieren' : 'Aufgabe erstellen',
                     style: const TextStyle(fontSize: 16),
                   ),
                 ),
@@ -505,31 +543,13 @@ class _PlannerFormScreenState extends State<PlannerFormScreen> {
   }
 
   String _getIntervalText(MaintenanceInterval interval) {
-    switch (interval) {
-      case MaintenanceInterval.daily:
-        return 'Täglich';
-      case MaintenanceInterval.weekly:
-        return 'Wöchentlich';
-      case MaintenanceInterval.monthly:
-        return 'Monatlich';
-      case MaintenanceInterval.quarterly:
-        return 'Vierteljährlich';
-      case MaintenanceInterval.yearly:
-        return 'Jährlich';
-    }
-  }
-
-  String _getPriorityText(MaintenancePriority priority) {
-    switch (priority) {
-      case MaintenancePriority.low:
-        return 'Niedrig';
-      case MaintenancePriority.medium:
-        return 'Mittel';
-      case MaintenancePriority.high:
-        return 'Hoch';
-      case MaintenancePriority.urgent:
-        return 'Dringend';
-    }
+    return switch (interval) {
+      MaintenanceInterval.daily => 'Täglich',
+      MaintenanceInterval.weekly => 'Wöchentlich',
+      MaintenanceInterval.monthly => 'Monatlich',
+      MaintenanceInterval.quarterly => 'Vierteljährlich',
+      MaintenanceInterval.yearly => 'Jährlich',
+    };
   }
 
   String _formatDate(DateTime date) {

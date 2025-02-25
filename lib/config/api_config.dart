@@ -6,6 +6,10 @@ import 'dart:io'; // Für die Zertifikatsvalidierung
 class ApiConfig {
   static const String _domain = 'nsylelsq.ddns.net';
   static const int _port = 443; // Port auf 443 ändern, da HTTPS verwendet wird
+  static String getUserProfileUrl(String userId) => '$usersUrl/$userId/profile';
+  static String changePasswordUrl(String userId) => '$usersUrl/$userId/password';
+  static String uploadProfileImageUrl(String userId) => '$usersUrl/$userId/profile-image';
+  static String updateLastLoginUrl(String userId) => '$usersUrl/$userId/last-login';
 
   // Timeout-Einstellungen
   static const Duration connectionTimeout = Duration(seconds: 15);
@@ -34,6 +38,8 @@ class ApiConfig {
   static String get techniciansUrl => '$baseUrl/users?role=technician';
 
   // Verbesserte HTTP-Client Methode mit Debug-Logging
+// api_config.dart - Die sendRequest-Methode aktualisieren
+
   static Future<http.Response> sendRequest({
     required String url,
     required String method,
@@ -77,6 +83,26 @@ class ApiConfig {
           print('⏳ Starte PATCH Request...');
           print('📦 Body: $body');
           response = await http.patch(
+            uri,
+            headers: finalHeaders,
+            body: body,
+          ).timeout(responseTimeout);
+          break;
+
+        case 'DELETE':  // Neue DELETE-Methode hinzufügen
+          print('⏳ Starte DELETE Request...');
+          if (body != null) print('📦 Body: $body');
+          response = await http.delete(
+            uri,
+            headers: finalHeaders,
+            body: body,
+          ).timeout(responseTimeout);
+          break;
+
+        case 'PUT':  // Auch PUT hinzufügen für Vollständigkeit
+          print('⏳ Starte PUT Request...');
+          print('📦 Body: $body');
+          response = await http.put(
             uri,
             headers: finalHeaders,
             body: body,

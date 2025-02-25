@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../config/api_config.dart';
 import '../models/user_role.dart';
 import '../main.dart' show userService;
 import 'package:http/http.dart' as http;
@@ -60,7 +61,7 @@ class InAppNotificationService extends ChangeNotifier {
   Future<void> loadNotifications() async {
     try {
       final response = await http.get(
-        Uri.parse('$_apiUrl/task_notifications'),
+        Uri.parse('${ApiConfig.baseUrl}/task_notifications'),
         headers: {'User-Id': _currentUser?.id ?? ''},
       );
 
@@ -92,7 +93,7 @@ class InAppNotificationService extends ChangeNotifier {
       };
 
       final response = await http.post(
-        Uri.parse('$_apiUrl/task_notifications'),
+        Uri.parse('${ApiConfig.baseUrl}/task_notifications'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(notification),
       );
@@ -109,7 +110,7 @@ class InAppNotificationService extends ChangeNotifier {
   Future<void> markAsRead(String notificationId) async {
     try {
       final response = await http.patch(
-        Uri.parse('$_apiUrl/task_notifications/$notificationId/read'),
+        Uri.parse('${ApiConfig.baseUrl}/task_notifications/$notificationId/read'),
       );
 
       if (response.statusCode == 200) {

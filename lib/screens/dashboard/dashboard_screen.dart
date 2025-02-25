@@ -6,9 +6,37 @@ import '../../widgets/ai_assistant_widget.dart';
 import 'animated_dashboard_tile.dart';
 import 'package:provider/provider.dart';
 import '../../../services/theme_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({Key? key}) : super(key: key);
+
+  void _showLogoutConfirmDialog(BuildContext context) {
+    final userService = UserService();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Abmelden'),
+        content: const Text('Möchten Sie sich wirklich abmelden?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () {
+              userService.logout();
+              // Alle gespeicherten Anmeldedaten löschen
+              const FlutterSecureStorage().deleteAll();
+              Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+            },
+            child: const Text('Abmelden'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,12 +51,11 @@ class DashboardScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.blue[800],
+        backgroundColor: Theme.of(context).colorScheme.primary,
         title: Row(
           children: [
             const Text('Dashboard'),
             const Spacer(),
-            // Benutzerinfos in der AppBar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8.0),
               child: Chip(
@@ -36,77 +63,66 @@ class DashboardScreen extends StatelessWidget {
                   backgroundColor: Colors.white,
                   child: Text(
                     currentUser.username[0].toUpperCase(),
-                    style: TextStyle(color: Colors.blue[800]),
+                    style: TextStyle(color: Theme.of(context).colorScheme.primary),
                   ),
                 ),
                 label: Text(
                   '${currentUser.username} (${UserPermissions.getRoleDisplayName(currentUser.role)})',
                   style: const TextStyle(color: Colors.white),
                 ),
-                backgroundColor: Colors.blue[600],
+                backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.8),
               ),
             ),
           ],
         ),
         actions: [
-          // Optional: Logo in der AppBar statt im Body
-          /*
-          Wenn Sie das Logo in der AppBar möchten, entfernen Sie die Kommentare:
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Image.asset(
-              'assets/IMG_4945.PNG',
-              height: 40,
-              errorBuilder: (context, error, stackTrace) {
-                return const SizedBox(
-                  height: 40,
-                  child: Center(
-                    child: Text('Logo konnte nicht geladen werden'),
-                  ),
-                );
-              },
-            ),
-          ),
-          */
-
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              userService.logout();
-              Navigator.of(context).pushReplacementNamed('/');
+          // Im Benutzermenü in dashboard_screen.dart - Ergänzung des Profilmenüpunkts
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.account_circle, color: Colors.white),
+            tooltip: 'Benutzermenü',
+            onSelected: (value) {
+              if (value == 'logout') {
+                _showLogoutConfirmDialog(context);
+              } else if (value == 'profile') {
+                Navigator.of(context).pushNamed('/profile');
+              } else if (value == 'settings') {
+                Navigator.of(context).pushNamed('/settings');
+              }
             },
+            itemBuilder: (BuildContext context) => [
+              const PopupMenuItem<String>(
+                value: 'profile',
+                child: ListTile(
+                  leading: Icon(Icons.person),
+                  title: Text('Mein Profil'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'settings',
+                child: ListTile(
+                  leading: Icon(Icons.settings),
+                  title: Text('Einstellungen'),
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: ListTile(
+                  leading: Icon(Icons.logout, color: Colors.red),
+                  title: Text('Abmelden', style: TextStyle(color: Colors.red)),
+                ),
+              ),
+            ],
           ),
         ],
       ),
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // KI-Assistent
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: AIAssistantWidget(),
+              child: ImprovedAIAssistantWidget(),
             ),
-
-            // Optional: Logo im Body belassen
-            /*
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Image.asset(
-                'assets/IMG_4945.PNG',
-                height: 60,
-                errorBuilder: (context, error, stackTrace) {
-                  return const SizedBox(
-                    height: 60,
-                    child: Center(
-                      child: Text('Logo konnte nicht geladen werden'),
-                    ),
-                  );
-                },
-              ),
-            ),
-            */
-
-            // Grid mit Funktionskacheln
             GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -130,7 +146,7 @@ class DashboardScreen extends StatelessWidget {
                 if (currentUser.hasPermission('manage_maintenance'))
                   const AnimatedDashboardTile(
                     icon: Icons.event_note,
-                    title: 'Planer', // Geändert von 'Wartungsplaner'
+                    title: 'Planer',
                     delay: 300,
                   ),
                 const AnimatedDashboardTile(
@@ -159,11 +175,7 @@ class DashboardScreen extends StatelessWidget {
                     title: 'Benutzerverwaltung',
                     delay: 600,
                   ),
-                const AnimatedDashboardTile(
-                  icon: Icons.settings,
-                  title: 'Einstellungen',
-                  delay: 800,
-                ),
+
               ],
             ),
           ],

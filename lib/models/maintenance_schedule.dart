@@ -15,7 +15,8 @@ enum MaintenanceTaskStatus {
   pending,    // Ausstehend
   inProgress, // In Bearbeitung
   completed,  // Abgeschlossen
-  overdue     // Überfällig
+  overdue,    // Überfällig
+  deleted     // Gelöscht (neu hinzugefügt)
 }
 enum MaintenancePriority {
   low,
@@ -41,7 +42,8 @@ class MaintenanceTask {
   bool? isPublic;
   String? createdBy;// Ersteller der Aufgabe
   MaintenancePriority priority;  // Neues Feld
-
+  String? line;       // Neue Eigenschaft
+  String? machineType;
 
   // Konstruktor mit benötigten und optionalen Parametern
   MaintenanceTask({
@@ -61,6 +63,8 @@ class MaintenanceTask {
     this.isPublic = true,
     this.createdBy,
     this.priority = MaintenancePriority.medium,
+    this.line,           // Neue Parameter
+    this.machineType,
   });
 
 
@@ -80,7 +84,8 @@ class MaintenanceTask {
       assignedTo: json['assigned_to']?.toString(),
       status: _parseStatus(json['status']),
       priority: _parsePriority(json['priority']),  // Neue Zeile
-
+      line: json['machine_line']?.toString(),          // Neue Felder
+      machineType: json['machine_type']?.toString(),
     );
   }
 
@@ -108,6 +113,8 @@ class MaintenanceTask {
         return MaintenanceTaskStatus.completed;
       case 'overdue':
         return MaintenanceTaskStatus.overdue;
+      case 'deleted':
+        return MaintenanceTaskStatus.deleted;
       default:
         return MaintenanceTaskStatus.pending;
     }
@@ -131,7 +138,8 @@ class MaintenanceTask {
       'is_public': isPublic,
       'created_by': createdBy,
       'priority': priority.toString().split('.').last.toLowerCase(),  // Neue Zeile
-
+      'machine_line': line,                // Neue Felder
+      'machine_type': machineType,
     };
   }
 

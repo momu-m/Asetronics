@@ -156,6 +156,11 @@ class DatabaseService {
   /// Speichert einen neuen Benutzer
   Future<void> saveUser(Map<String, dynamic> user) async {
     try {
+      // Konvertiere preferences zu JSON-String, falls vorhanden
+      if (user.containsKey('preferences') && user['preferences'] != null) {
+        user['preferences'] = jsonEncode(user['preferences']);
+      }
+
       if (!_useFallback && _database != null) {
         await _database!.insert('users', user);
         print('Benutzer in SQLite gespeichert: ${user['name']}');
@@ -174,6 +179,11 @@ class DatabaseService {
   /// Aktualisiert einen bestehenden Benutzer
   Future<void> updateUser(Map<String, dynamic> user) async {
     try {
+      // Konvertiere preferences zu JSON-String, falls vorhanden
+      if (user.containsKey('preferences') && user['preferences'] != null) {
+        user['preferences'] = jsonEncode(user['preferences']);
+      }
+
       if (!_useFallback && _database != null) {
         await _database!.update(
           'users',
@@ -200,12 +210,28 @@ class DatabaseService {
   /// Ruft alle Benutzer ab
   Future<List<Map<String, dynamic>>> getUsers() async {
     try {
+      List<Map<String, dynamic>> users;
+
       if (!_useFallback && _database != null) {
         final result = await _database!.query('users');
-        return List<Map<String, dynamic>>.from(result);
+        users = List<Map<String, dynamic>>.from(result);
       } else {
-        return getFromLocalStorage(USERS_KEY);
+        users = getFromLocalStorage(USERS_KEY);
       }
+
+      // Konvertiere preferences zurück zu Objekten
+      for (var user in users) {
+        if (user.containsKey('preferences') && user['preferences'] is String) {
+          try {
+            user['preferences'] = jsonDecode(user['preferences']);
+          } catch (e) {
+            print('Fehler beim Dekodieren der Benutzereinstellungen: $e');
+            user['preferences'] = null;
+          }
+        }
+      }
+
+      return users;
     } catch (e) {
       print('Fehler beim Laden der Benutzer: $e');
       return [];
@@ -484,20 +510,27 @@ class DatabaseService {
 
   /// Erstellt die Datenbanktabellen
   Future<void> _createTables(Database db, int version) async {
-    // Benutzer-Tabelle
+    // Benutzer-Tabelle mit erweiterten Feldern
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        username TEXT NOT NULL UNIQUE,
-        password TEXT NOT NULL,
-        role TEXT NOT NULL,
-        department TEXT,
-        created_at TEXT NOT NULL,
-        created_by TEXT,
-        is_active INTEGER DEFAULT 1
-      )
-    ''');
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      username TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      role TEXT NOT NULL,
+      department TEXT,
+      created_at TEXT NOT NULL,
+      created_by TEXT,
+      is_active INTEGER DEFAULT 1,
+      full_name TEXT,
+      email TEXT,
+      phone TEXT,
+      profile_image_url TEXT,
+      profile_image_base64 TEXT,
+      last_login TEXT,
+      preferences TEXT
+    )
+  ''');
 
     // Fehlermeldungen-Tabelle
     await db.execute('''
